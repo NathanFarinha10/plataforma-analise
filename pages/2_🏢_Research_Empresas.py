@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (Versão de Depuração para Nomes de Índice)
+# pages/2_🏢_Research_Empresas.py (Versão de Produção 1.2 - FINAL)
 
 import streamlit as st
 import pandas as pd
@@ -45,38 +45,33 @@ def get_key_stats(tickers):
 
 @st.cache_data
 def get_dcf_data_from_yf(ticker_symbol):
-    """Busca e exibe os DataFrames financeiros para depuração."""
-    ticker = yf.Ticker(ticker_symbol)
-    
-    # --- ETAPA DE DEPURAÇÃO ---
-    st.subheader("DEBUG: Estrutura do Fluxo de Caixa (Cash Flow)")
-    cash_flow = ticker.cashflow
-    st.dataframe(cash_flow)
-    
-    st.subheader("DEBUG: Estrutura do Balanço Patrimonial (Balance Sheet)")
-    balance_sheet = ticker.balance_sheet
-    st.dataframe(balance_sheet)
-    # --- FIM DA ETAPA DE DEPURAÇÃO ---
-
+    """Busca e calcula os dados para o DCF usando os nomes de índice corretos."""
     try:
-        op_cash_flow = cash_flow.loc['Total Cash From Operating Activities'].iloc[0]
-        capex = cash_flow.loc['Capital Expenditures'].iloc[0]
+        ticker = yf.Ticker(ticker_symbol)
+        
+        cash_flow = ticker.cashflow
+        balance_sheet = ticker.balance_sheet
+        info = ticker.info
+
+        # --- CORREÇÃO FINAL COM OS NOMES EXATOS ---
+        op_cash_flow = cash_flow.loc['Operating Cash Flow'].iloc[0]
+        capex = cash_flow.loc['Capital Expenditure'].iloc[0]
         fcf = op_cash_flow + capex
 
-        total_liab = balance_sheet.loc['Total Liab'].iloc[0]
-        total_cash = balance_sheet.loc['Total Cash'].iloc[0]
+        total_liab = balance_sheet.loc['Total Liabilities Net Minority Interest'].iloc[0]
+        total_cash = balance_sheet.loc['Cash And Cash Equivalents'].iloc[0]
         net_debt = total_liab - total_cash
         
-        shares_outstanding = ticker.info['sharesOutstanding']
+        shares_outstanding = info['sharesOutstanding']
         
         return {
             'fcf': fcf, 'net_debt': net_debt, 'shares_outstanding': shares_outstanding
         }
     except KeyError as e:
-        st.error(f"Erro de Chave: A linha {e} não foi encontrada em um dos relatórios acima. Por favor, verifique os nomes exatos e me informe.")
+        st.error(f"Erro ao acessar dados financeiros: a linha {e} pode não existir para este ticker. O DCF não pode ser calculado.")
         return None
     except Exception as e:
-        st.error(f"Erro inesperado ao processar os dados dos relatórios: {e}")
+        st.warning(f"Não foi possível buscar todos os dados financeiros de yfinance para o DCF. A cobertura para '{ticker_symbol}' pode ser limitada.")
         return None
 
 def calculate_dcf(fcf, net_debt, shares_outstanding, g, tg, wacc):
@@ -113,6 +108,7 @@ if analyze_button:
         if not info.get('longName'):
             st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido.")
         else:
+            # SEÇÃO 1: VISÃO GERAL
             st.header(f"Visão Geral de: {info['longName']} ({info['symbol']})")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
@@ -126,6 +122,7 @@ if analyze_button:
             with st.expander("Descrição da Empresa"):
                 st.write(info.get('longBusinessSummary', 'Descrição não disponível.'))
 
+            # SEÇÃO 2: ANÁLISE COMPARATIVA
             st.header("Análise Comparativa de Múltiplos (Comps)")
             peer_tickers = [p.strip() for p in peers_string.split(",")] if peers_string else []
             if peer_tickers:
@@ -148,16 +145,13 @@ if analyze_button:
                         st.plotly_chart(fig_ev, use_container_width=True)
                 else: st.warning("Não foi possível buscar dados para a análise comparativa.")
             else: st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
-
+            
+            # SEÇÃO 3: VALUATION POR DCF
             st.header(f"Valuation por DCF: {ticker_symbol}")
             with st.spinner("Buscando dados financeiros e calculando o DCF..."):
                 dcf_data = get_dcf_data_from_yf(ticker_symbol)
                 if dcf_data:
-                    intrinsic_value = calculate_dcf(
-                        fcf=dcf_data['fcf'], net_debt=dcf_data['net_debt'],
-                        shares_outstanding=dcf_data['shares_outstanding'],
-                        g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate
-                    )
+                    intrinsic_value = calculate_dcf(fcf=dcf_data['fcf'], net_debt=dcf_data['net_debt'], shares_outstanding=dcf_data['shares_outstanding'], g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate)
                     current_price = info.get('currentPrice')
                     if current_price and intrinsic_value > 0:
                         upside = ((intrinsic_value / current_price) - 1) * 100
@@ -166,16 +160,17 @@ if analyze_button:
                         col1_dcf.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
                         col2_dcf.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
                         col3_dcf.metric("Potencial de Upside/Downside", f"{upside:.2f}%")
-                        if upside > 20: st.success(f"RECOMENDAÇÃO: COMPRAR...")
-                        elif upside < -20: st.error(f"RECOMENDAÇÃO: VENDER...")
-                        else: st.warning(f"RECOMENDAÇÃO: MANTER...")
-            
+                        if upside > 20: st.success(f"RECOMENDAÇÃO: COMPRAR. O preço justo está com um prêmio significativo sobre o preço de mercado.")
+                        elif upside < -20: st.error(f"RECOMENDAÇÃO: VENDER. O preço justo está com um desconto significativo sobre o preço de mercado.")
+                        else: st.warning(f"RECOMENDAÇÃO: MANTER. O preço de mercado está próximo ao valor justo calculado.")
+
+            # SEÇÃO 4: HISTÓRICO DE COTAÇÕES
             st.header("Histórico de Cotações")
             hist_df = yf.Ticker(ticker_symbol).history(period="5y")
-            fig_price = px.line(hist_df, x=hist_df.index, y="Close", title=f"Preço de Fechamento de {info['shortName']}",
-                                labels={'Close': f'Preço ({info["currency"]})', 'Date': 'Data'})
+            fig_price = px.line(hist_df, x=hist_df.index, y="Close", title=f"Preço de Fechamento de {info['shortName']}", labels={'Close': f'Preço ({info["currency"]})', 'Date': 'Data'})
             st.plotly_chart(fig_price, use_container_width=True)
 
+            # SEÇÃO 5: NOTÍCIAS RECENTES
             st.header("Notícias Recentes e Análise de Sentimento")
             news = yf.Ticker(ticker_symbol).news
             if news:
