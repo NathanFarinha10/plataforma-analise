@@ -1,22 +1,19 @@
-# pages/2_🏢_Research_Empresas.py (Versão com Análise Comparativa)
+# pages/2_🏢_Research_Empresas.py (Versão Completa, Final e Corrigida)
 
 import streamlit as st
 import pandas as pd
 import yfinance as yf
 import plotly.express as px
 import numpy as np
-from alpha_vantage.fundamentaldata import FundamentalData
+import requests # Usaremos requests para mais controle sobre a chamada da API
 
 # --- Configuração da Página ---
-st.set_page_config(
-    page_title="PAG | Research de Empresas",
-    page_icon="🏢",
-    layout="wide"
-)
+st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
 
-# --- Funções Auxiliares ---
+# --- FUNÇÕES AUXILIARES ---
+
 def analisar_sentimento(texto):
-    # (código da função de sentimento permanece o mesmo)
+    """Analisa o sentimento de um texto (título da notícia) com base em um léxico de palavras."""
     texto = texto.lower()
     palavras_positivas = ['crescimento', 'lucro', 'aumento', 'supera', 'expansão', 'forte', 'otimista', 'sucesso', 'melhora', 'compra',
                           'growth', 'profit', 'increase', 'beats', 'expansion', 'strong', 'optimistic', 'success', 'improves', 'buy', 'upgrade']
@@ -44,8 +41,6 @@ def get_key_stats(tickers):
         try:
             ticker = yf.Ticker(ticker_symbol)
             info = ticker.info
-            
-            # Dicionário para guardar as métricas de cada empresa
             stats = {
                 'Ativo': info.get('symbol'),
                 'Empresa': info.get('shortName'),
@@ -58,24 +53,27 @@ def get_key_stats(tickers):
             }
             key_stats.append(stats)
         except Exception:
-            # Ignora o ticker se houver erro
             continue
     return pd.DataFrame(key_stats)
 
 @st.cache_data
 def get_dcf_data(ticker, api_key):
-    """Busca os dados necessários para o DCF da Alpha Vantage."""
-    fd = FundamentalData(key=api_key, output_format='pandas')
+    """Busca os dados necessários para o DCF da Alpha Vantage usando requests."""
     try:
-        # Fluxo de Caixa
-        cash_flow = fd.get_cash_flow_annual(symbol=ticker)[0]
-        # Balanço Patrimonial
-        balance_sheet = fd.get_balance_sheet_annual(symbol=ticker)[0]
+        # Buscando Fluxo de Caixa
+        url_cf = f'https://www.alphavantage.co/query?function=CASH_FLOW&symbol={ticker}&apikey={api_key}'
+        r_cf = requests.get(url_cf)
+        r_cf.raise_for_status() # Lança um erro para status HTTP ruins (4xx ou 5xx)
+        data_cf = r_cf.json()
+        fcf = float(data_cf['annualReports'][0]['freeCashFlow'])
 
-        # Pegando os dados mais recentes (primeira coluna)
-        fcf = float(cash_flow['freeCashFlow'].iloc[0])
-        total_debt = float(balance_sheet['totalDebt'].iloc[0])
-        cash_and_equivalents = float(balance_sheet['cashAndCashEquivalentsAtCarryingValue'].iloc[0])
+        # Buscando Balanço Patrimonial
+        url_bs = f'https://www.alphavantage.co/query?function=BALANCE_SHEET&symbol={ticker}&apikey={api_key}'
+        r_bs = requests.get(url_bs)
+        r_bs.raise_for_status()
+        data_bs = r_bs.json()
+        total_debt = float(data_bs['annualReports'][0]['totalDebt'])
+        cash_and_equivalents = float(data_bs['annualReports'][0]['cashAndCashEquivalentsAtCarryingValue'])
         
         # yfinance para número de ações
         shares_outstanding = yf.Ticker(ticker).info['sharesOutstanding']
@@ -85,50 +83,29 @@ def get_dcf_data(ticker, api_key):
             'net_debt': total_debt - cash_and_equivalents,
             'shares_outstanding': shares_outstanding
         }
-    except Exception:
+    except Exception as e:
+        st.warning(f"Não foi possível buscar todos os dados da Alpha Vantage para o DCF. Ticker pode não ter cobertura ou limite da API atingido. Erro: {e}")
         return None
 
 def calculate_dcf(fcf, net_debt, shares_outstanding, g, tg, wacc):
     """Calcula o valor intrínseco por ação usando um modelo DCF."""
-    # Projeção de FCF para 5 anos
+    if (wacc - tg) == 0: return 0 # Evita divisão por zero
     fcf_proj = [fcf * (1 + g)**i for i in range(1, 6)]
-    
-    # Valor Terminal
     terminal_value = (fcf_proj[-1] * (1 + tg)) / (wacc - tg)
-    
-    # Descontando FCF e Valor Terminal
     pv_fcf = [fcf_proj[i] / (1 + wacc)**(i+1) for i in range(5)]
     pv_terminal_value = terminal_value / (1 + wacc)**5
-    
-    # Enterprise Value e Equity Value
     enterprise_value = sum(pv_fcf) + pv_terminal_value
     equity_value = enterprise_value - net_debt
-    
-    # Valor Intrínseco por Ação
     intrinsic_value = equity_value / shares_outstanding
     return intrinsic_value
 
-
-# --- Título e Descrição ---
+# --- INTERFACE DO USUÁRIO (TÍTULO E SIDEBAR) ---
 st.title("Painel de Research de Empresas")
-st.markdown("Analise ações individuais e compare com seus pares de mercado.")
+st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
 
-# --- Barra Lateral com Inputs ---
 st.sidebar.header("Filtros de Análise")
-ticker_symbol = st.sidebar.text_input(
-    "Digite o Ticker Principal", 
-    "AAPL",
-    help="Ex: AAPL para Apple, PETR4.SA para Petrobras."
-).upper()
-
-# NOVO INPUT: Tickers dos concorrentes
-peers_string = st.sidebar.text_area(
-    "Insira os Tickers dos Concorrentes (separados por vírgula)",
-    "MSFT, GOOG, AMZN",
-    help="Tickers para compor a análise comparativa."
-).upper()
-
-analyze_button = st.sidebar.button("Analisar")
+ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
+peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
 
 st.sidebar.subheader("Premissas do Modelo DCF")
 growth_rate = st.sidebar.number_input("Taxa de Crescimento do FCF (anual %)", value=5.0, step=0.5, format="%.1f") / 100
@@ -137,55 +114,46 @@ wacc_rate = st.sidebar.number_input("Taxa de Desconto (WACC %)", value=9.0, step
 
 analyze_button = st.sidebar.button("Analisar")
 
-# --- Lógica Principal ---
+# --- LÓGICA PRINCIPAL DA PÁGINA ---
 if analyze_button:
     if not ticker_symbol:
         st.warning("Por favor, digite um ticker principal para analisar.")
     else:
         try:
-            with st.spinner(f"Carregando dados de {ticker_symbol}..."):
-                # ... (código existente da Visão Geral, Fundamentalista, Gráfico e Notícias)
-                ticker = yf.Ticker(ticker_symbol)
-                info = ticker.info
-                if not info.get('longName'):
-                    st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido.")
-                else:
-                    # (SEÇÕES ANTERIORES - VISÃO GERAL, FUNDAMENTALISTA, GRÁFICO, NOTÍCIAS)
-                    # Elas continuam aqui como estavam... (código omitido para brevidade, mas está no seu arquivo)
-                    st.header(f"Visão Geral de: {info['longName']} ({info['symbol']})")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("País", info.get('country', 'N/A'))
-                        st.metric("Setor", info.get('sector', 'N/A'))
-                        st.metric("Indústria", info.get('industry', 'N/A'))
-                    with col2:
-                        st.metric("Moeda", info.get('currency', 'N/A'))
-                        st.metric("Preço Atual", f"{info.get('currentPrice', 0):.2f}")
-                        st.metric("Valor de Mercado", f"{(info.get('marketCap', 0) / 1e9):.2f}B")
+            info = yf.Ticker(ticker_symbol).info
+            if not info.get('longName'):
+                st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido.")
+            else:
+                # --- SEÇÃO 1: VISÃO GERAL E FUNDAMENTALISTA ---
+                st.header(f"Visão Geral de: {info['longName']} ({info['symbol']})")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("País", info.get('country', 'N/A'))
+                    st.metric("Setor", info.get('sector', 'N/A'))
+                with col2:
+                    st.metric("Moeda", info.get('currency', 'N/A'))
+                    st.metric("Preço Atual", f"{info.get('currentPrice', 0):.2f}")
+                with col3:
+                    st.metric("P/L", f"{info.get('trailingPE', 0):.2f}")
+                    st.metric("P/VP", f"{info.get('priceToBook', 0):.2f}")
+                with col4:
+                    st.metric("Dividend Yield", f"{info.get('dividendYield', 0) * 100:.2f}%")
+                    st.metric("Beta", f"{info.get('beta', 0):.2f}")
+                with st.expander("Descrição da Empresa"):
+                    st.write(info.get('longBusinessSummary', 'Descrição não disponível.'))
 
-                    # ... (resto das seções anteriores)
-                    # --- NOVA SEÇÃO: Análise Comparativa ---
-                    st.header("Análise Comparativa de Múltiplos (Comps)")
-                    
-                    peer_tickers = [p.strip() for p in peers_string.split(",")]
+                # --- SEÇÃO 2: ANÁLISE COMPARATIVA (COMPS) ---
+                st.header("Análise Comparativa de Múltiplos (Comps)")
+                peer_tickers = [p.strip() for p in peers_string.split(",")] if peers_string else []
+                if peer_tickers:
                     all_tickers = [ticker_symbol] + peer_tickers
-                    
                     with st.spinner("Buscando dados dos concorrentes..."):
                         comps_df = get_key_stats(all_tickers)
-
                     if not comps_df.empty:
-                        # Formata o DataFrame para exibição
-                        comps_df_display = comps_df.set_index('Ativo')
-                        for col in ['P/L', 'P/VP', 'EV/EBITDA']:
-                            comps_df_display[col] = comps_df_display[col].map('{:.2f}'.format, na_action='ignore')
-                        for col in ['Dividend Yield (%)', 'ROE (%)', 'Margem Bruta (%)']:
-                             comps_df_display[col] = comps_df_display[col].map('{:.2f}%'.format, na_action='ignore')
-                        
-                        st.dataframe(comps_df_display, use_container_width=True)
+                        comps_df_display = comps_df.set_index('Ativo').T # Transpor para melhor visualização
+                        st.dataframe(comps_df_display.style.format("{:.2f}", na_rep="N/A"), use_container_width=True)
 
-                        # Gráficos Comparativos
                         st.subheader("Visualização dos Múltiplos")
-                        
                         col_chart1, col_chart2 = st.columns(2)
                         with col_chart1:
                             fig_pe = px.bar(comps_df, x='Ativo', y='P/L', title='Comparativo de P/L', text='P/L')
@@ -197,53 +165,71 @@ if analyze_button:
                             st.plotly_chart(fig_ev, use_container_width=True)
                     else:
                         st.warning("Não foi possível buscar dados para a análise comparativa.")
+                else:
+                    st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
+
+                # --- SEÇÃO 3: VALUATION POR DCF ---
+                st.header(f"Valuation por DCF: {ticker_symbol}")
+                with st.spinner("Buscando dados financeiros e calculando o DCF..."):
+                    av_api_key = st.secrets.get("ALPHA_VANTAGE_API_KEY")
+                    if not av_api_key:
+                        st.error("Chave da API da Alpha Vantage não configurada nos Secrets do Streamlit.")
+                    else:
+                        dcf_data = get_dcf_data(ticker_symbol, av_api_key)
+                        if dcf_data:
+                            intrinsic_value = calculate_dcf(
+                                fcf=dcf_data['fcf'], net_debt=dcf_data['net_debt'],
+                                shares_outstanding=dcf_data['shares_outstanding'],
+                                g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate
+                            )
+                            current_price = info.get('currentPrice')
+                            if current_price and intrinsic_value > 0:
+                                upside = ((intrinsic_value / current_price) - 1) * 100
+                                st.subheader("Resultado do Valuation")
+                                col1_dcf, col2_dcf, col3_dcf = st.columns(3)
+                                col1_dcf.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
+                                col2_dcf.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
+                                col3_dcf.metric("Potencial de Upside/Downside", f"{upside:.2f}%")
+
+                                if upside > 20:
+                                    st.success(f"RECOMENDAÇÃO: COMPRAR. O preço justo está com um prêmio significativo sobre o preço de mercado (margem de segurança > 20%).")
+                                elif upside < -20:
+                                    st.error(f"RECOMENDAÇÃO: VENDER. O preço justo está com um desconto significativo sobre o preço de mercado.")
+                                else:
+                                    st.warning(f"RECOMENDAÇÃO: MANTER. O preço de mercado está próximo ao valor justo calculado.")
+                        # Não mostra mensagem de erro se dcf_data for None, pois a função get_dcf_data já emite um st.warning
+
+                # --- SEÇÃO 4: GRÁFICO DE PREÇOS ---
+                st.header("Histórico de Cotações")
+                hist_df = yf.Ticker(ticker_symbol).history(period="5y")
+                fig_price = px.line(hist_df, x=hist_df.index, y="Close", title=f"Preço de Fechamento de {info['shortName']}",
+                                    labels={'Close': f'Preço ({info["currency"]})', 'Date': 'Data'})
+                st.plotly_chart(fig_price, use_container_width=True)
+
+                # --- SEÇÃO 5: NOTÍCIAS RECENTES ---
+                st.header("Notícias Recentes e Análise de Sentimento")
+                news = yf.Ticker(ticker_symbol).news
+                if news:
+                    for item in news:
+                        content = item.get('content', {})
+                        if not content: continue
+                        titulo = content.get('title')
+                        if not titulo: continue
+                        
+                        provider = item.get('provider', {})
+                        publisher = provider.get('displayName', 'Não Informado')
+                        link = item.get('canonicalUrl', {}).get('url')
+                        sentimento, icone = analisar_sentimento(titulo)
+                        
+                        with st.expander(f"{icone} {titulo}"):
+                            st.markdown(f"**Publicado por:** {publisher}")
+                            st.markdown(f"**Sentimento:** {sentimento}")
+                            if link: st.link_button("Ler notícia completa", link)
+                else:
+                    st.write("Nenhuma notícia recente encontrada para esta ação.")
 
         except Exception as e:
-            st.error(f"Ocorreu um erro inesperado durante a análise: {e}")
+            st.error(f"Ocorreu um erro geral durante a análise: {e}")
 
 else:
-    st.info("Digite um ticker e seus concorrentes na barra lateral para começar a análise.")
-
-                    st.header(f"Valuation por DCF: {ticker_symbol}")
-                        
-                        with st.spinner("Buscando dados financeiros e calculando o DCF..."):
-                            try:
-                                av_api_key = st.secrets["ALPHA_VANTAGE_API_KEY"]
-                                dcf_data = get_dcf_data(ticker_symbol, av_api_key)
-                                
-                                if dcf_data:
-                                    # Calcula o valor intrínseco
-                                    intrinsic_value = calculate_dcf(
-                                        fcf=dcf_data['fcf'],
-                                        net_debt=dcf_data['net_debt'],
-                                        shares_outstanding=dcf_data['shares_outstanding'],
-                                        g=growth_rate,
-                                        tg=terminal_growth_rate,
-                                        wacc=wacc_rate
-                                    )
-                                    
-                                    # Pega o preço atual para comparação
-                                    current_price = yf.Ticker(ticker_symbol).info['currentPrice']
-                                    upside = ((intrinsic_value / current_price) - 1) * 100
-                    
-                                    # Exibe os resultados
-                                    st.subheader("Resultado do Valuation")
-                                    col1, col2, col3 = st.columns(3)
-                                    col1.metric("Preço Justo (Valor Intrínseco)", f"${intrinsic_value:.2f}")
-                                    col2.metric("Preço Atual de Mercado", f"${current_price:.2f}")
-                                    col3.metric("Potencial de Upside/Downside", f"{upside:.2f}%")
-                    
-                                    if upside > 20:
-                                        st.success(f"Recomendação: COMPRAR. O preço justo está significativamente acima do preço de mercado (margem de segurança > 20%).")
-                                    elif upside < -20:
-                                        st.error(f"Recomendação: VENDER. O preço justo está significativamente abaixo do preço de mercado.")
-                                    else:
-                                        st.warning(f"Recomendação: MANTER. O preço de mercado está próximo ao valor justo calculado.")
-                    
-                                else:
-                                    st.error("Não foi possível buscar os dados financeiros da Alpha Vantage para o modelo DCF. O ticker pode não ter cobertura.")
-                    
-                            except Exception as e:
-                                st.error(f"Ocorreu um erro ao executar o modelo DCF: {e}")
-                    else:
-                        st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa, incluindo o valuation por DCF.")
+    st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa.")
