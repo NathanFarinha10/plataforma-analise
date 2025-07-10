@@ -1,8 +1,8 @@
-# app.py
+# app.py (versão corrigida)
 
 import streamlit as st
 import pandas as pd
-from fredapi import Fred # Importando a nova biblioteca
+from fredapi import Fred
 import plotly.express as px
 from datetime import datetime
 
@@ -14,19 +14,19 @@ st.set_page_config(
 )
 
 # --- Inicialização da API do FRED ---
-# Acessa a chave da API que guardamos nos "Secrets" do Streamlit
 try:
     api_key = st.secrets["FRED_API_KEY"]
     fred = Fred(api_key=api_key)
 except KeyError:
     st.error("Chave da API do FRED não encontrada. Configure-a nos 'Secrets' do Streamlit.")
-    st.stop() # Interrompe a execução se a chave não for encontrada
+    st.stop()
 
-# --- Dicionário de Séries do FRED (mesmo de antes) ---
+# --- Dicionário de Séries do FRED (ATUALIZADO) ---
+# Aqui estão as correções para os códigos do Brasil.
 fred_series = {
     'Taxa de Juros': {
         'EUA': 'FEDFUNDS',
-        'Brasil': 'BCBPCUM'
+        'Brasil': 'IRSTCI01BRM156N' # CÓDIGO CORRIGIDO
     },
     'Inflação (YoY)': {
         'EUA': 'CPIAUCSL',
@@ -34,7 +34,7 @@ fred_series = {
     },
     'PIB (Cresc. Anual %)': {
         'EUA': 'A191RL1Q225SBEA',
-        'Brasil': 'RGDPNABRINA666NRUG'
+        'Brasil': 'CCRETT01BRQ661N' # CÓDIGO CORRIGIDO
     },
     'Taxa de Desemprego': {
         'EUA': 'UNRATE',
@@ -52,22 +52,19 @@ def fetch_fred_data(series_codes, start_date, end_date):
     all_data = []
     for country, code in series_codes.items():
         try:
-            # Busca cada série individualmente
             series_data = fred.get_series(code, start_time=start_date, end_time=end_date)
-            series_data = series_data.to_frame(name=country) # Converte para DataFrame e nomeia a coluna
+            series_data = series_data.to_frame(name=country)
             all_data.append(series_data)
         except Exception as e:
-            # Avisa sobre falhas individuais sem parar o app
-            st.warning(f"Não foi possível buscar dados para '{country}' (Código: {code}). Erro: {e}")
+            st.warning(f"Não foi possível buscar dados para '{country}' (Código: {code}).")
     
     if not all_data:
-        return pd.DataFrame() # Retorna DF vazio se nenhuma série foi carregada
+        return pd.DataFrame()
 
-    # Concatena todos os DataFrames em um só, alinhando pelos índices (datas)
     combined_df = pd.concat(all_data, axis=1)
     return combined_df
 
-# --- Interface do Usuário (UI) - NENHUMA MUDANÇA AQUI ---
+# --- Interface do Usuário (UI) ---
 st.title("Painel de Análise Macroeconômica")
 st.markdown("Plataforma para análise comparativa de indicadores econômicos do Brasil e EUA.")
 
@@ -92,7 +89,7 @@ end_date = st.sidebar.date_input(
     max_value=datetime.today()
 )
 
-# --- Lógica de Negócio e Exibição de Dados - NENHUMA MUDANÇA AQUI ---
+# --- Lógica de Negócio e Exibição de Dados ---
 series_to_fetch = fred_series[selected_indicator]
 
 with st.spinner(f'Carregando dados de "{selected_indicator}"...'):
