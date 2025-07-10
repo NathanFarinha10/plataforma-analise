@@ -1,4 +1,4 @@
-# pages/3_📊_Portfólios_e_Risco.py (Versão de Depuração Final)
+# pages/3_📊_Portfólios_e_Risco.py (Versão 1.0 - FINAL)
 
 import streamlit as st
 import pandas as pd
@@ -29,23 +29,25 @@ run_button = st.sidebar.button("Analisar Carteira")
 # --- Funções Auxiliares ---
 @st.cache_data
 def get_price_data(tickers_list):
-    """Baixa os dados de preços de fechamento ajustados."""
+    """Baixa os dados de preços de fechamento para uma lista de tickers."""
     try:
-        data = yf.download(tickers_list, start="2020-01-01")['Adj Close']
+        # ALTERAÇÃO FINAL E DEFINITIVA: Usando 'Close' em vez de 'Adj Close'
+        data = yf.download(tickers_list, start="2020-01-01")['Close']
         return data.dropna(axis=1, how='all')
-    # ALTERAÇÃO CRÍTICA: AGORA VAMOS MOSTRAR O ERRO REAL
-    except Exception as e:
-        st.error(f"Erro detalhado ao buscar dados com yfinance: {e}")
+    except Exception:
+        # Retornamos ao funcionamento silencioso, pois o erro foi identificado.
         return pd.DataFrame()
 
 def calculate_portfolio_metrics(prices, weights):
     """Calcula as métricas de um portfólio com base nos pesos."""
+    if prices.empty:
+        return 0, 0, 0, 0
     returns = prices.pct_change().dropna()
     portfolio_return = np.sum(returns.mean() * weights) * 252
     cov_matrix = returns.cov() * 252
     portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
-    sharpe_ratio = portfolio_return / portfolio_volatility
-    z_score = 1.645
+    sharpe_ratio = portfolio_return / portfolio_volatility if portfolio_volatility != 0 else 0
+    z_score = 1.645 # Z-score para 95% de confiança
     daily_var = portfolio_volatility / np.sqrt(252) * z_score
     return portfolio_return, portfolio_volatility, sharpe_ratio, daily_var
 
@@ -59,9 +61,14 @@ if run_button:
             with st.spinner("Buscando dados e analisando a carteira..."):
                 prices = get_price_data(tickers)
                 
-                if not prices.empty:
-                    num_assets = len(prices.columns)
+                if prices.empty:
+                    st.error("Não foi possível obter dados para os tickers fornecidos. Verifique se os códigos estão corretos e se há dados para o período.")
+                else:
+                    # Filtra os tickers para corresponder às colunas de preços que foram baixadas com sucesso
+                    valid_tickers = prices.columns
+                    num_assets = len(valid_tickers)
                     weights = np.full(num_assets, 1/num_assets)
+                    
                     p_return, p_vol, p_sharpe, p_var = calculate_portfolio_metrics(prices, weights)
 
                     st.header("Análise da Carteira (Pesos Iguais)")
@@ -72,7 +79,7 @@ if run_button:
                     col3.metric("Índice de Sharpe", f"{p_sharpe:.2f}")
                     col4.metric("VaR (95%, 1 dia)", f"{p_var*100:.2f}%", help="Com 95% de confiança, a perda máxima em 1 dia não deve exceder este percentual.")
 
-                    weights_df = pd.DataFrame({'Ativo': prices.columns, 'Peso': weights})
+                    weights_df = pd.DataFrame({'Ativo': valid_tickers, 'Peso': weights})
                     fig = px.pie(weights_df, names='Ativo', values='Peso', title='Alocação de Ativos (Pesos Iguais)')
                     st.plotly_chart(fig, use_container_width=True)
                     
