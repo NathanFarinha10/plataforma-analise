@@ -1,4 +1,4 @@
-# 1_📈_Análise_Macro.py (Versão 2.0 - Cockpit Macroeconômico)
+# 1_📈_Análise_Macro.py (Versão 2.1 - Corrigida e Simplificada)
 
 import streamlit as st
 import pandas as pd
@@ -22,7 +22,6 @@ except KeyError:
     st.stop()
 
 # --- DICIONÁRIO EXPANDIDO DE SÉRIES DO FRED ---
-# Estruturado por País e Categoria para a nova interface
 fred_codes = {
     "EUA": {
         "Atividade": {
@@ -73,18 +72,19 @@ def fetch_fred_series(series_code, start_date, end_date):
     """Busca uma única série do FRED."""
     return fred.get_series(series_code, start_time=start_date, end_time=end_date)
 
-def plot_indicator(data, title):
-    """Função para plotar um gráfico de linha padrão."""
+def plot_indicator(data, title, key_sufix):
+    """Função para plotar um gráfico de linha padrão com uma chave única."""
     fig = px.line(data, title=title)
     fig.update_layout(showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    # A chave única previne o erro de 'Duplicate ID'
+    st.plotly_chart(fig, use_container_width=True, key=f"plotly_{key_sufix}")
 
 # --- INTERFACE DO USUÁRIO (SIDEBAR) ---
 st.sidebar.title("Painel de Controle")
-analysis_scope = st.sidebar.radio(
-    "Escolha o Escopo da Análise",
-    ["Visão Geral Comparativa", "Análise Detalhada: 🇧🇷 Brasil", "Análise Detalhada: 🇺🇸 EUA"],
-    captions=["Compare os principais indicadores", "Mergulhe na economia brasileira", "Mergulhe na economia americana"]
+country_selection = st.sidebar.radio(
+    "Escolha a Economia para Análise",
+    ["🇧🇷 Brasil", "🇺🇸 EUA"],
+    key='country_select'
 )
 
 st.sidebar.markdown("---")
@@ -95,77 +95,67 @@ end_date = st.sidebar.date_input('Data de Fim', value=datetime.today())
 # --- LÓGICA PRINCIPAL DA PÁGINA ---
 st.title("Cockpit Macroeconômico")
 
-# --- VISÃO COMPARATIVA ---
-if analysis_scope == "Visão Geral Comparativa":
-    st.header("Comparativo Brasil vs. EUA")
-    
-    comparative_indicators = {
-        "PIB (Cresc. Anual %)": (fred_codes["Brasil"]["Atividade"]["PIB (Cresc. Anual %)"], fred_codes["EUA"]["Atividade"]["PIB (Cresc. Anual %)"]),
-        "Inflação ao Consumidor (YoY)": (fred_codes["Brasil"]["Inflação e Juros"]["Inflação ao Consumidor (IPCA YoY)"], fred_codes["EUA"]["Inflação e Juros"]["Inflação ao Consumidor (CPI YoY)"]),
-        "Taxa de Juros Básica": (fred_codes["Brasil"]["Inflação e Juros"]["Taxa de Juros (SELIC)"], fred_codes["EUA"]["Inflação e Juros"]["Taxa de Juros (Fed Funds)"]),
-        "Taxa de Desemprego": (fred_codes["Brasil"]["Emprego"]["Taxa de Desemprego"], fred_codes["EUA"]["Emprego"]["Taxa de Desemprego"]),
-    }
+country = "Brasil" if "Brasil" in country_selection else "EUA"
+st.header(f"Análise Detalhada: {country}")
 
-    for name, (br_code, us_code) in comparative_indicators.items():
-        with st.spinner(f"Carregando {name}..."):
-            br_data = fetch_fred_series(br_code, start_date, end_date).rename("Brasil")
-            us_data = fetch_fred_series(us_code, start_date, end_date).rename("EUA")
-            combined_data = pd.concat([br_data, us_data], axis=1).ffill()
-            plot_indicator(combined_data, name)
+# Organiza os indicadores em abas
+tab1, tab2, tab3, tab4 = st.tabs(["Atividade Econômica", "Inflação e Juros", "Consumidor e Emprego", "Setor Externo e Risco"])
 
-# --- VISÕES DETALHADAS POR PAÍS ---
-else:
-    country = "Brasil" if "Brasil" in analysis_scope else "EUA"
-    st.header(f"Análise Detalhada: {country}")
+with tab1: # Atividade Econômica
+    st.subheader("Crescimento e Produção")
+    # Loop para os principais indicadores de atividade, EXCETO confiança
+    for name, code in fred_codes[country]["Atividade"].items():
+        if "Confiança" not in name:
+            with st.spinner(f"Carregando {name}..."):
+                data = fetch_fred_series(code, start_date, end_date)
+                if name in ["Produção Industrial (Variação Anual %)", "Vendas no Varejo (Variação Anual %)"]:
+                    data = data.pct_change(12).dropna() * 100
+                plot_indicator(data, name, key_sufix=f"tab1_{code}")
 
-    # Organiza os indicadores em abas
-    tab1, tab2, tab3, tab4 = st.tabs(["Atividade Econômica", "Inflação e Juros", "Consumidor e Emprego", "Setor Externo e Risco"])
-
-    with tab1: # Atividade Econômica
-        st.subheader("Crescimento e Produção")
-        for name, code in fred_codes[country]["Atividade"].items():
-            data = fetch_fred_series(code, start_date, end_date)
-            # Para alguns indicadores, a variação percentual anual é mais informativa
-            if name in ["Produção Industrial (Variação Anual %)", "Vendas no Varejo (Variação Anual %)"]:
-                data = data.pct_change(12).dropna() * 100
-            plot_indicator(data, name)
-
-    with tab2: # Inflação e Juros
-        st.subheader("Dinâmica de Preços e Política Monetária")
-        for name, code in fred_codes[country]["Inflação e Juros"].items():
-             if "Juro" not in name: # Plotamos os juros separadamente
+with tab2: # Inflação e Juros
+    st.subheader("Dinâmica de Preços e Política Monetária")
+    for name, code in fred_codes[country]["Inflação e Juros"].items():
+         if "Juro" not in name:
+            with st.spinner(f"Carregando {name}..."):
                 data = fetch_fred_series(code, start_date, end_date)
                 if country == "EUA" and name == "Inflação ao Produtor (PPI YoY)":
                     data = data.pct_change(12).dropna() * 100
-                plot_indicator(data, name)
-        
-        # Gráfico especial para a Curva de Juros (EUA)
-        if country == "EUA":
-            st.subheader("Curva de Juros (Yield Curve)")
-            with st.spinner("Calculando o spread da curva de juros..."):
-                juro_10a = fetch_fred_series(fred_codes["EUA"]["Inflação e Juros"]["Juro 10 Anos"], start_date, end_date)
-                juro_2a = fetch_fred_series(fred_codes["EUA"]["Inflação e Juros"]["Juro 2 Anos"], start_date, end_date)
-                yield_spread = (juro_10a - juro_2a).dropna()
-                fig = px.area(yield_spread, title="Spread 10 Anos - 2 Anos (EUA)")
-                fig.add_hline(y=0, line_dash="dash", line_color="red")
-                fig.update_layout(showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
-                st.caption("Valores abaixo da linha vermelha (inversão da curva) são historicamente fortes indicadores de recessão futura.")
+                plot_indicator(data, name, key_sufix=f"tab2_{code}")
+    
+    if country == "EUA":
+        st.subheader("Curva de Juros (Yield Curve)")
+        with st.spinner("Calculando o spread da curva de juros..."):
+            juro_10a = fetch_fred_series(fred_codes["EUA"]["Inflação e Juros"]["Juro 10 Anos"], start_date, end_date)
+            juro_2a = fetch_fred_series(fred_codes["EUA"]["Inflação e Juros"]["Juro 2 Anos"], start_date, end_date)
+            yield_spread = (juro_10a - juro_2a).dropna()
+            fig = px.area(yield_spread, title="Spread 10 Anos - 2 Anos (EUA)")
+            fig.add_hline(y=0, line_dash="dash", line_color="red")
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True, key="yield_curve")
+            st.caption("Valores abaixo da linha vermelha (inversão da curva) são historicamente fortes indicadores de recessão futura.")
+    else: # Para o Brasil, plotamos a Selic
+        st.subheader("Taxa de Juros Básica")
+        selic_code = fred_codes["Brasil"]["Inflação e Juros"]["Taxa de Juros (SELIC)"]
+        data = fetch_fred_series(selic_code, start_date, end_date)
+        plot_indicator(data, "Taxa SELIC", key_sufix="selic")
 
-    with tab3: # Consumidor e Emprego
-        st.subheader("Mercado de Trabalho e Confiança")
-        for name, code in fred_codes[country]["Emprego"].items():
+with tab3: # Consumidor e Emprego
+    st.subheader("Mercado de Trabalho e Confiança")
+    for name, code in fred_codes[country]["Emprego"].items():
+        with st.spinner(f"Carregando {name}..."):
             data = fetch_fred_series(code, start_date, end_date)
-            plot_indicator(data, name)
-        
-        # Confiança do Consumidor (está no dict de Atividade, mas pertence a este painel)
-        conf_code = fred_codes[country]["Atividade"].get("Confiança do Consumidor") or fred_codes[country]["Atividade"].get("Confiança do Empresário Industrial")
-        conf_name = "Confiança do Consumidor" if "Confiança do Consumidor" in fred_codes[country]["Atividade"] else "Confiança do Empresário Industrial"
+            plot_indicator(data, name, key_sufix=f"tab3_emprego_{code}")
+    
+    # Apenas o gráfico de confiança é plotado aqui
+    conf_code = fred_codes[country]["Atividade"].get("Confiança do Consumidor") or fred_codes[country]["Atividade"].get("Confiança do Empresário Industrial")
+    conf_name = "Confiança do Consumidor" if "Confiança do Consumidor" in fred_codes[country]["Atividade"] else "Confiança do Empresário Industrial"
+    with st.spinner(f"Carregando {conf_name}..."):
         data = fetch_fred_series(conf_code, start_date, end_date)
-        plot_indicator(data, conf_name)
+        plot_indicator(data, conf_name, key_sufix=f"tab3_conf_{conf_code}")
 
-    with tab4: # Setor Externo e Risco
-        st.subheader("Relações Comerciais")
-        for name, code in fred_codes[country]["Setor Externo"].items():
+with tab4: # Setor Externo e Risco
+    st.subheader("Relações Comerciais")
+    for name, code in fred_codes[country]["Setor Externo"].items():
+        with st.spinner(f"Carregando {name}..."):
             data = fetch_fred_series(code, start_date, end_date)
-            plot_indicator(data, name)
+            plot_indicator(data, name, key_sufix=f"tab4_{code}")
