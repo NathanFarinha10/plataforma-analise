@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py
+# pages/2_🏢_Research_Empresas.py (versão de depuração e correção)
 
 import streamlit as st
 import pandas as pd
@@ -59,6 +59,7 @@ if analyze_button:
                     st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido. Verifique o código.")
                 else:
                     st.header(f"Visão Geral de: {info['longName']} ({info['symbol']})")
+                    # ... (o resto do código de Visão Geral e Fundamentalista permanece igual)
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("País", info.get('country', 'N/A'))
@@ -94,9 +95,16 @@ if analyze_button:
                     news = ticker.news
                     if news:
                         for item in news:
-                            titulo = item.get('title')
+                            # --- CÓDIGO DE DEPURAÇÃO ---
+                            # Descomente a linha abaixo para ver a estrutura exata dos dados da notícia
+                            # st.json(item) 
+                            
+                            # --- CÓDIGO CORRIGIDO E MAIS ROBUSTO ---
+                            # Tenta pegar 'title', se não conseguir, tenta 'headline'.
+                            titulo = item.get('title') or item.get('headline')
+                            
                             if not titulo:
-                                continue
+                                continue # Pula para o próximo item se não encontrar título
                             
                             publisher = item.get('publisher', 'Publicador não informado')
                             link = item.get('link')
