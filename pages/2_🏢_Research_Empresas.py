@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (versão de depuração e correção)
+# pages/2_🏢_Research_Empresas.py (versão final)
 
 import streamlit as st
 import pandas as pd
@@ -41,8 +41,8 @@ st.markdown("Analise ações individuais do Brasil e dos EUA.")
 st.sidebar.header("Filtros de Análise")
 ticker_symbol = st.sidebar.text_input(
     "Digite o Ticker da Ação", 
-    "AAPL",
-    help="Exemplos: AAPL para Apple, PETR4.SA para Petrobras."
+    "NVDA",
+    help="Exemplos: NVDA para Nvidia, PETR4.SA para Petrobras."
 ).upper()
 analyze_button = st.sidebar.button("Analisar")
 
@@ -59,7 +59,6 @@ if analyze_button:
                     st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido. Verifique o código.")
                 else:
                     st.header(f"Visão Geral de: {info['longName']} ({info['symbol']})")
-                    # ... (o resto do código de Visão Geral e Fundamentalista permanece igual)
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("País", info.get('country', 'N/A'))
@@ -69,7 +68,6 @@ if analyze_button:
                         st.metric("Moeda", info.get('currency', 'N/A'))
                         st.metric("Preço Atual", f"{info.get('currentPrice', 0):.2f}")
                         st.metric("Valor de Mercado", f"{(info.get('marketCap', 0) / 1e9):.2f}B")
-
                     with st.expander("Descrição da Empresa"):
                         st.write(info.get('longBusinessSummary', 'Descrição não disponível.'))
                     
@@ -95,19 +93,21 @@ if analyze_button:
                     news = ticker.news
                     if news:
                         for item in news:
-                            # --- CÓDIGO DE DEPURAÇÃO ---
-                            # Descomente a linha abaixo para ver a estrutura exata dos dados da notícia
-                            st.json(item) 
-                            
-                            # --- CÓDIGO CORRIGIDO E MAIS ROBUSTO ---
-                            # Tenta pegar 'title', se não conseguir, tenta 'headline'.
-                            titulo = item.get('title') or item.get('headline')
-                            
+                            # --- CÓDIGO FINAL E CORRIGIDO ---
+                            content = item.get('content', {}) # Pega a "pasta" content
+                            if not content:
+                                continue # Se não houver, pula
+
+                            titulo = content.get('title') # Pega o título de dentro da "pasta"
                             if not titulo:
-                                continue # Pula para o próximo item se não encontrar título
+                                continue # Se não tiver título, pula
+
+                            provider = item.get('provider', {})
+                            publisher = provider.get('displayName', 'Não Informado')
+
+                            url_info = item.get('canonicalUrl', {})
+                            link = url_info.get('url')
                             
-                            publisher = item.get('publisher', 'Publicador não informado')
-                            link = item.get('link')
                             sentimento, icone = analisar_sentimento(titulo)
                             
                             with st.expander(f"{icone} {titulo}"):
