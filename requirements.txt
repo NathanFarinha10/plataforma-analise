@@ -3,3 +3,5 @@ pandas
 fredapi
 plotly
 yfinance
+PyPortfolioOpt
+scipy
