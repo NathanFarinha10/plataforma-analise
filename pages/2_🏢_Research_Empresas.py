@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (Versão de Produção Final)
+# pages/2_🏢_Research_Empresas.py (Versão de Produção Final v1.1)
 
 import streamlit as st
 import pandas as pd
@@ -144,12 +144,12 @@ if analyze_button:
                 with st.spinner("Buscando dados dos concorrentes..."):
                     comps_df = get_key_stats(all_tickers)
                 if not comps_df.empty:
-                    # --- AJUSTE DE HIGIENIZAÇÃO DOS DADOS ---
                     metric_cols = ['P/L', 'P/VP', 'EV/EBITDA', 'Dividend Yield (%)', 'ROE (%)', 'Margem Bruta (%)']
                     for col in metric_cols:
                         comps_df[col] = pd.to_numeric(comps_df[col], errors='coerce')
                     
-                    st.dataframe(comps_df.set_index('Ativo').style.format("{:.2f}", na_rep="N/A"), use_container_width=True)
+                    formatter = {col: "{:.2f}" for col in metric_cols}
+                    st.dataframe(comps_df.set_index('Ativo').style.format(formatter, na_rep="N/A"), use_container_width=True)
 
                     st.subheader("Visualização dos Múltiplos")
                     col_chart1, col_chart2 = st.columns(2)
@@ -219,6 +219,3 @@ if analyze_button:
                         if link: st.link_button("Ler notícia completa", link)
             else:
                 st.write("Nenhuma notícia recente encontrada para esta ação.")
-
-else:
-    st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa.")
