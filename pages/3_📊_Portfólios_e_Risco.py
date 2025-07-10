@@ -1,4 +1,4 @@
-# pages/3_📊_Portfólios_e_Risco.py (Versão Final e Robusta)
+# pages/3_📊_Portfólios_e_Risco.py (Versão de Depuração Final)
 
 import streamlit as st
 import pandas as pd
@@ -30,11 +30,12 @@ run_button = st.sidebar.button("Analisar Carteira")
 @st.cache_data
 def get_price_data(tickers_list):
     """Baixa os dados de preços de fechamento ajustados."""
-    # ALTERAÇÃO 1: Removido o parâmetro 'end' para tornar a chamada mais robusta.
     try:
         data = yf.download(tickers_list, start="2020-01-01")['Adj Close']
         return data.dropna(axis=1, how='all')
-    except Exception:
+    # ALTERAÇÃO CRÍTICA: AGORA VAMOS MOSTRAR O ERRO REAL
+    except Exception as e:
+        st.error(f"Erro detalhado ao buscar dados com yfinance: {e}")
         return pd.DataFrame()
 
 def calculate_portfolio_metrics(prices, weights):
@@ -44,7 +45,7 @@ def calculate_portfolio_metrics(prices, weights):
     cov_matrix = returns.cov() * 252
     portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
     sharpe_ratio = portfolio_return / portfolio_volatility
-    z_score = 1.645 # Z-score para 95% de confiança
+    z_score = 1.645
     daily_var = portfolio_volatility / np.sqrt(252) * z_score
     return portfolio_return, portfolio_volatility, sharpe_ratio, daily_var
 
@@ -54,14 +55,11 @@ if run_button:
     if not tickers or tickers == ['']:
         st.warning("Por favor, insira pelo menos um ticker.")
     else:
-        # ALTERAÇÃO 2: Melhoria no bloco try-except para mostrar o erro detalhado.
         try:
             with st.spinner("Buscando dados e analisando a carteira..."):
                 prices = get_price_data(tickers)
                 
-                if prices.empty:
-                    st.error("Não foi possível obter dados para os tickers fornecidos. Verifique os códigos e o período.")
-                else:
+                if not prices.empty:
                     num_assets = len(prices.columns)
                     weights = np.full(num_assets, 1/num_assets)
                     p_return, p_vol, p_sharpe, p_var = calculate_portfolio_metrics(prices, weights)
@@ -88,7 +86,6 @@ if run_button:
 
         except Exception as e:
             st.error(f"Ocorreu um erro inesperado durante a análise: {e}")
-            st.info("Dica: Alguns tickers podem não ter dados disponíveis ou o formato pode ser inválido.")
 
 else:
     st.info("Insira os tickers dos ativos na barra lateral para analisar a carteira.")
