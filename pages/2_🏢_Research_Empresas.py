@@ -5,6 +5,7 @@ import pandas as pd
 import yfinance as yf
 import plotly.express as px
 import numpy as np
+from alpha_vantage.fundamentaldata import FundamentalData
 
 # --- Configuração da Página ---
 st.set_page_config(
@@ -61,6 +62,53 @@ def get_key_stats(tickers):
             continue
     return pd.DataFrame(key_stats)
 
+@st.cache_data
+def get_dcf_data(ticker, api_key):
+    """Busca os dados necessários para o DCF da Alpha Vantage."""
+    fd = FundamentalData(key=api_key, output_format='pandas')
+    try:
+        # Fluxo de Caixa
+        cash_flow = fd.get_cash_flow_annual(symbol=ticker)[0]
+        # Balanço Patrimonial
+        balance_sheet = fd.get_balance_sheet_annual(symbol=ticker)[0]
+
+        # Pegando os dados mais recentes (primeira coluna)
+        fcf = float(cash_flow['freeCashFlow'].iloc[0])
+        total_debt = float(balance_sheet['totalDebt'].iloc[0])
+        cash_and_equivalents = float(balance_sheet['cashAndCashEquivalentsAtCarryingValue'].iloc[0])
+        
+        # yfinance para número de ações
+        shares_outstanding = yf.Ticker(ticker).info['sharesOutstanding']
+        
+        return {
+            'fcf': fcf,
+            'net_debt': total_debt - cash_and_equivalents,
+            'shares_outstanding': shares_outstanding
+        }
+    except Exception:
+        return None
+
+def calculate_dcf(fcf, net_debt, shares_outstanding, g, tg, wacc):
+    """Calcula o valor intrínseco por ação usando um modelo DCF."""
+    # Projeção de FCF para 5 anos
+    fcf_proj = [fcf * (1 + g)**i for i in range(1, 6)]
+    
+    # Valor Terminal
+    terminal_value = (fcf_proj[-1] * (1 + tg)) / (wacc - tg)
+    
+    # Descontando FCF e Valor Terminal
+    pv_fcf = [fcf_proj[i] / (1 + wacc)**(i+1) for i in range(5)]
+    pv_terminal_value = terminal_value / (1 + wacc)**5
+    
+    # Enterprise Value e Equity Value
+    enterprise_value = sum(pv_fcf) + pv_terminal_value
+    equity_value = enterprise_value - net_debt
+    
+    # Valor Intrínseco por Ação
+    intrinsic_value = equity_value / shares_outstanding
+    return intrinsic_value
+
+
 # --- Título e Descrição ---
 st.title("Painel de Research de Empresas")
 st.markdown("Analise ações individuais e compare com seus pares de mercado.")
@@ -79,6 +127,13 @@ peers_string = st.sidebar.text_area(
     "MSFT, GOOG, AMZN",
     help="Tickers para compor a análise comparativa."
 ).upper()
+
+analyze_button = st.sidebar.button("Analisar")
+
+st.sidebar.subheader("Premissas do Modelo DCF")
+growth_rate = st.sidebar.number_input("Taxa de Crescimento do FCF (anual %)", value=5.0, step=0.5, format="%.1f") / 100
+terminal_growth_rate = st.sidebar.number_input("Taxa de Perpetuidade (%)", value=2.5, step=0.1, format="%.1f") / 100
+wacc_rate = st.sidebar.number_input("Taxa de Desconto (WACC %)", value=9.0, step=0.5, format="%.1f") / 100
 
 analyze_button = st.sidebar.button("Analisar")
 
@@ -148,3 +203,47 @@ if analyze_button:
 
 else:
     st.info("Digite um ticker e seus concorrentes na barra lateral para começar a análise.")
+
+                    st.header(f"Valuation por DCF: {ticker_symbol}")
+                        
+                        with st.spinner("Buscando dados financeiros e calculando o DCF..."):
+                            try:
+                                av_api_key = st.secrets["ALPHA_VANTAGE_API_KEY"]
+                                dcf_data = get_dcf_data(ticker_symbol, av_api_key)
+                                
+                                if dcf_data:
+                                    # Calcula o valor intrínseco
+                                    intrinsic_value = calculate_dcf(
+                                        fcf=dcf_data['fcf'],
+                                        net_debt=dcf_data['net_debt'],
+                                        shares_outstanding=dcf_data['shares_outstanding'],
+                                        g=growth_rate,
+                                        tg=terminal_growth_rate,
+                                        wacc=wacc_rate
+                                    )
+                                    
+                                    # Pega o preço atual para comparação
+                                    current_price = yf.Ticker(ticker_symbol).info['currentPrice']
+                                    upside = ((intrinsic_value / current_price) - 1) * 100
+                    
+                                    # Exibe os resultados
+                                    st.subheader("Resultado do Valuation")
+                                    col1, col2, col3 = st.columns(3)
+                                    col1.metric("Preço Justo (Valor Intrínseco)", f"${intrinsic_value:.2f}")
+                                    col2.metric("Preço Atual de Mercado", f"${current_price:.2f}")
+                                    col3.metric("Potencial de Upside/Downside", f"{upside:.2f}%")
+                    
+                                    if upside > 20:
+                                        st.success(f"Recomendação: COMPRAR. O preço justo está significativamente acima do preço de mercado (margem de segurança > 20%).")
+                                    elif upside < -20:
+                                        st.error(f"Recomendação: VENDER. O preço justo está significativamente abaixo do preço de mercado.")
+                                    else:
+                                        st.warning(f"Recomendação: MANTER. O preço de mercado está próximo ao valor justo calculado.")
+                    
+                                else:
+                                    st.error("Não foi possível buscar os dados financeiros da Alpha Vantage para o modelo DCF. O ticker pode não ter cobertura.")
+                    
+                            except Exception as e:
+                                st.error(f"Ocorreu um erro ao executar o modelo DCF: {e}")
+                    else:
+                        st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa, incluindo o valuation por DCF.")
