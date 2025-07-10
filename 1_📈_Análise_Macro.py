@@ -1,17 +1,17 @@
-# 1_📈_Análise_Macro.py (Versão 3.0 - Fontes de Dados Dedicadas)
+# 1_📈_Análise_Macro.py (Versão 3.1 - Corrigindo SyntaxError)
 
 import streamlit as st
 import pandas as pd
 from fredapi import Fred
-from bcb import sgs # Nova importação para o Banco Central do Brasil
+from bcb import sgs # Importação para o Banco Central do Brasil
 import plotly.express as px
 from datetime import datetime
+import numpy as np
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
 
 # --- INICIALIZAÇÃO DAS APIS ---
-# FRED para dados dos EUA
 try:
     api_key = st.secrets["FRED_API_KEY"]
     fred = Fred(api_key=api_key)
@@ -19,7 +19,7 @@ except KeyError:
     st.error("Chave da API do FRED não encontrada. Configure-a nos 'Secrets'.")
     st.stop()
 
-# --- DICIONÁRIOS DE CÓDIGOS (SEPARADOS POR FONTE) ---
+# --- DICIONÁRIOS DE CÓDIGOS ---
 fred_codes_us = {
     "Atividade": {"PIB (Cresc. Anual %)": "A191RL1Q225SBEA", "Produção Industrial (Variação Anual %)": "INDPRO", "Vendas no Varejo (Variação Anual %)": "RSAFS", "Confiança do Consumidor": "UMCSENT"},
     "Inflação e Juros": {"Inflação ao Consumidor (CPI YoY)": "CPIAUCSL", "Inflação ao Produtor (PPI YoY)": "PPIACO", "Taxa de Juros (Fed Funds)": "FEDFUNDS", "Juro 10 Anos": "DGS10", "Juro 2 Anos": "DGS2"},
@@ -34,7 +34,7 @@ bcb_codes_br = {
     "Setor Externo": {"Balança Comercial (Saldo em USD Milhões)": 2270}
 }
 
-# --- FUNÇÕES DE BUSCA DE DADOS (AGORA SEPARADAS) ---
+# --- FUNÇÕES DE BUSCA DE DADOS ---
 @st.cache_data
 def fetch_fred_series(series_code, start_date, end_date):
     """Busca uma série do FRED."""
@@ -47,7 +47,8 @@ def fetch_fred_series(series_code, start_date, end_date):
 def fetch_bcb_series(series_code, start_date, end_date):
     """Busca uma série do SGS do BCB."""
     try:
-        return sgs.get({'code': series_code}, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d')ให้น)
+        # Linha Corrigida
+        return sgs.get({'code': series_code}, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
     except Exception:
         return pd.DataFrame()
 
@@ -82,12 +83,13 @@ if "Brasil" in country_selection:
                 plot_indicator(data, name, key_sufix=f"br_ativ_{code}")
         with tab2:
             for name, code in bcb_codes_br["Inflação e Juros"].items():
-                data = fetch_bcb_series(code, start_date, end_date).iloc[:, 0]
-                if name in ["IPCA (Inflação Anual %)", "IGP-M (Anual %)"]:
-                    # O BCB retorna a variação mensal, precisamos calcular a anualizada (acumulado 12m)
-                    data = (1 + data/100).rolling(window=12).apply(np.prod, raw=True) - 1
-                    data = data * 100
-                plot_indicator(data.dropna(), name, key_sufix=f"br_infl_{code}")
+                data = fetch_bcb_series(code, start_date, end_date)
+                if not data.empty:
+                    data = data.iloc[:, 0]
+                    if name in ["IPCA (Inflação Anual %)", "IGP-M (Anual %)"]:
+                        data = (1 + data/100).rolling(window=12).apply(np.prod, raw=True) - 1
+                        data = data * 100
+                    plot_indicator(data.dropna(), name, key_sufix=f"br_infl_{code}")
         with tab3:
             for name, code in bcb_codes_br["Emprego"].items():
                 data = fetch_bcb_series(code, start_date, end_date)
@@ -107,7 +109,8 @@ elif "EUA" in country_selection:
             for name, code in fred_codes_us["Atividade"].items():
                 data = fetch_fred_series(code, start_date, end_date)
                 if name in ["Produção Industrial (Variação Anual %)", "Vendas no Varejo (Variação Anual %)"]:
-                    data = data.pct_change(12).dropna() * 100
+                    if not data.empty:
+                        data = data.pct_change(12).dropna() * 100
                 plot_indicator(data, name, key_sufix=f"us_ativ_{code}")
         with tab2:
             st.subheader("Dinâmica de Preços e Política Monetária")
@@ -115,7 +118,8 @@ elif "EUA" in country_selection:
                 if "Juro" not in name:
                     data = fetch_fred_series(code, start_date, end_date)
                     if name == "Inflação ao Produtor (PPI YoY)":
-                        data = data.pct_change(12).dropna() * 100
+                        if not data.empty:
+                            data = data.pct_change(12).dropna() * 100
                     plot_indicator(data, name, key_sufix=f"us_infl_{code}")
             st.subheader("Curva de Juros (Yield Curve)")
             juro_10a = fetch_fred_series(fred_codes_us["Inflação e Juros"]["Juro 10 Anos"], start_date, end_date)
