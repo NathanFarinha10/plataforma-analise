@@ -13,19 +13,12 @@ st.set_page_config(
 )
 
 # --- FUNÇÃO DE ANÁLISE DE SENTIMENTO (NOSSA IA) ---
-# Usamos um dicionário de palavras para classificar as notícias. Simples e eficaz.
 def analisar_sentimento(texto):
-    """
-    Analisa o sentimento de um texto (título da notícia) com base em um léxico de palavras.
-    """
     texto = texto.lower()
-    
-    # Palavras-chave para Brasil e EUA
     palavras_positivas = ['crescimento', 'lucro', 'aumento', 'supera', 'expansão', 'forte', 'otimista', 'sucesso', 'melhora', 'compra',
                           'growth', 'profit', 'increase', 'beats', 'expansion', 'strong', 'optimistic', 'success', 'improves', 'buy', 'upgrade']
     palavras_negativas = ['queda', 'prejuízo', 'redução', 'abaixo', 'contração', 'fraco', 'pessimista', 'falha', 'piora', 'venda',
                           'fall', 'loss', 'reduction', 'below', 'contraction', 'weak', 'pessimistic', 'fails', 'worsens', 'sell', 'downgrade']
-    
     score = 0
     for palavra in palavras_positivas:
         if palavra in texto:
@@ -33,7 +26,6 @@ def analisar_sentimento(texto):
     for palavra in palavras_negativas:
         if palavra in texto:
             score -= 1
-            
     if score > 0:
         return 'Positivo', '🟢'
     elif score < 0:
@@ -49,10 +41,9 @@ st.markdown("Analise ações individuais do Brasil e dos EUA.")
 st.sidebar.header("Filtros de Análise")
 ticker_symbol = st.sidebar.text_input(
     "Digite o Ticker da Ação", 
-    "AAPL",  # Valor padrão (Apple)
+    "AAPL",
     help="Exemplos: AAPL para Apple, PETR4.SA para Petrobras."
 ).upper()
-
 analyze_button = st.sidebar.button("Analisar")
 
 # --- Lógica Principal ---
@@ -64,11 +55,9 @@ if analyze_button:
             with st.spinner(f"Carregando dados de {ticker_symbol}..."):
                 ticker = yf.Ticker(ticker_symbol)
                 info = ticker.info
-
                 if not info.get('longName'):
                     st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido. Verifique o código.")
                 else:
-                    # --- Seção de Informações Gerais ---
                     st.header(f"Visão Geral de: {info['longName']} ({info['symbol']})")
                     col1, col2 = st.columns(2)
                     with col1:
@@ -83,7 +72,6 @@ if analyze_button:
                     with st.expander("Descrição da Empresa"):
                         st.write(info.get('longBusinessSummary', 'Descrição não disponível.'))
                     
-                    # --- NOVA SEÇÃO: Análise Fundamentalista ---
                     st.header("Análise Fundamentalista")
                     fund_col1, fund_col2, fund_col3 = st.columns(3)
                     with fund_col1:
@@ -96,27 +84,29 @@ if analyze_button:
                         st.metric("EPS (Lucro por Ação)", f"{info.get('trailingEps', 0):.2f}")
                         st.metric("ROE (Return on Equity)", f"{info.get('returnOnEquity', 0) * 100:.2f}%")
 
-                    # --- Seção de Gráfico de Preços ---
                     st.header("Histórico de Cotações")
                     hist_df = ticker.history(period="5y")
                     fig = px.line(hist_df, x=hist_df.index, y="Close", title=f"Preço de Fechamento de {info['shortName']}",
                                   labels={'Close': f'Preço ({info["currency"]})', 'Date': 'Data'})
                     st.plotly_chart(fig, use_container_width=True)
 
-                    # --- NOVA SEÇÃO: Análise de Sentimento com IA ---
                     st.header("Notícias Recentes e Análise de Sentimento")
                     news = ticker.news
                     if news:
                         for item in news:
-                            titulo = item['title']
-                            publisher = item['publisher']
-                            link = item['link']
+                            titulo = item.get('title')
+                            if not titulo:
+                                continue
+                            
+                            publisher = item.get('publisher', 'Publicador não informado')
+                            link = item.get('link')
                             sentimento, icone = analisar_sentimento(titulo)
                             
                             with st.expander(f"{icone} {titulo}"):
                                 st.markdown(f"**Publicado por:** {publisher}")
                                 st.markdown(f"**Sentimento:** {sentimento}")
-                                st.link_button("Ler notícia completa", link)
+                                if link:
+                                    st.link_button("Ler notícia completa", link)
                     else:
                         st.write("Nenhuma notícia recente encontrada para esta ação.")
 
