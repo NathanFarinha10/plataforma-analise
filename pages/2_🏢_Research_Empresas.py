@@ -97,7 +97,7 @@ if analyze_button:
                         for item in news:
                             # --- CÓDIGO DE DEPURAÇÃO ---
                             # Descomente a linha abaixo para ver a estrutura exata dos dados da notícia
-                            # st.json(item) 
+                            st.json(item) 
                             
                             # --- CÓDIGO CORRIGIDO E MAIS ROBUSTO ---
                             # Tenta pegar 'title', se não conseguir, tenta 'headline'.
