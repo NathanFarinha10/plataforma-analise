@@ -104,6 +104,53 @@ def get_rating_from_score(score):
     elif score >= 50: return "Neutro", "🟡"
     else: return "Inatrativo", "🔴"
 
+
+def generate_narrative(scores, info):
+    """Gera uma narrativa analítica com base nos scores calculados."""
+    quality_score, value_score, momentum_score = scores['quality'], scores['value'], scores['momentum']
+    
+    # Frases baseadas nos scores
+    # Qualidade
+    if quality_score >= 85:
+        q_phrase = f"uma empresa de excelente qualidade, com fundamentos extremamente sólidos"
+    elif quality_score >= 70:
+        q_phrase = f"uma empresa de alta qualidade, com fundamentos robustos"
+    elif quality_score >= 50:
+        q_phrase = f"uma empresa com fundamentos adequados"
+    else:
+        q_phrase = f"uma empresa cujos fundamentos requerem cautela"
+    
+    # Valor
+    if value_score >= 70:
+        v_phrase = f"que parece ser negociada a um valuation atrativo"
+    elif value_score >= 50:
+        v_phrase = f"com um valuation que parece justo"
+    else:
+        v_phrase = f"cujo valuation parece esticado nos níveis atuais"
+        
+    # Momento
+    if momentum_score >= 70:
+        m_phrase = f"e que atualmente desfruta de um forte momento de mercado"
+    elif momentum_score >= 50:
+        m_phrase = f"com um momento de mercado neutro"
+    else:
+        m_phrase = f"apesar de um momento de mercado desafiador"
+
+    # Constrói a narrativa final
+    narrative = f"Nossa análise indica que **{info.get('shortName', 'a empresa')}** é {q_phrase}, {v_phrase} {m_phrase}. "
+    
+    # Adiciona uma frase de evidência baseada no ponto mais forte
+    strongest_point = max(scores, key=scores.get)
+    if strongest_point == 'quality':
+        narrative += f"Sua alta rentabilidade, evidenciada por um ROE de **{info.get('returnOnEquity', 0) * 100:.1f}%**, é um diferencial chave."
+    elif strongest_point == 'value' and scores['value'] > 50:
+        upside = info.get('dcf_upside', 0)
+        narrative += f"O potencial de upside de **{upside:.1f}%** em nosso modelo DCF sugere uma margem de segurança considerável."
+    elif strongest_point == 'momentum' and scores['momentum'] > 50:
+        narrative += "Seu forte desempenho relativo contra o índice de referência confirma o interesse do mercado no ativo."
+        
+    return narrative
+
 def calculate_value_score(info, comps_df, dcf_upside):
     scores = {}
     pe = info.get('trailingPE')
@@ -177,33 +224,47 @@ if analyze_button:
                 peer_tickers = [p.strip() for p in peers_string.split(",")] if peers_string else []
                 comps_df = get_key_stats(peer_tickers)
 
-            st.header(f"Análise de {info['longName']} ({info['symbol']})")
+           # SUBSTITUA O BLOCO DA SEÇÃO DE RATING POR ESTE
 
-            st.subheader(f"Rating Proprietário (PAG Score)")
+            # --- SEÇÃO 1: RATING PROPRIETÁRIO E NARRATIVA ---
+            st.header(f"Análise de {info['longName']} ({info['symbol']})")
+            st.subheader(f"Rating Proprietário (PAG Score) & Tese de Investimento")
+            
+            # Calcula os dados necessários ANTES de exibir
             dcf_upside = None
             if dcf_data:
                 intrinsic_value = calculate_dcf(fcf=dcf_data['fcf'], net_debt=dcf_data['net_debt'], shares_outstanding=dcf_data['shares_outstanding'], g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate)
                 current_price = info.get('currentPrice')
                 if current_price and intrinsic_value > 0:
                     dcf_upside = ((intrinsic_value / current_price) - 1) * 100
+                    info['dcf_upside'] = dcf_upside # Adiciona ao dicionário info para uso na narrativa
             
+            # Calcula os scores
             quality_score, quality_breakdown = calculate_quality_score(info, dcf_data)
             quality_rating, quality_emoji = get_rating_from_score(quality_score)
+            
             value_score, value_breakdown = calculate_value_score(info, comps_df, dcf_upside)
             value_rating, value_emoji = get_rating_from_score(value_score)
+            
             momentum_score, momentum_breakdown = calculate_momentum_score(ticker_symbol)
             momentum_rating, momentum_emoji = get_rating_from_score(momentum_score)
-
+            
+            # Exibe os scores
             col1_rat, col2_rat, col3_rat = st.columns(3)
             with col1_rat:
                 st.metric("Qualidade", f"{quality_rating} {quality_emoji}", f"{quality_score:.0f} / 100")
-                with st.expander("Detalhes"): st.write(quality_breakdown)
+                with st.expander("Ver detalhes"): st.write(quality_breakdown)
             with col2_rat:
                 st.metric("Valor (Value)", f"{value_rating} {value_emoji}", f"{value_score:.0f} / 100")
-                with st.expander("Detalhes"): st.write(value_breakdown)
+                with st.expander("Ver detalhes"): st.write(value_breakdown)
             with col3_rat:
                 st.metric("Momento", f"{momentum_rating} {momentum_emoji}", f"{momentum_score:.0f} / 100")
-                with st.expander("Detalhes"): st.write(momentum_breakdown)
+                with st.expander("Ver detalhes"): st.write(momentum_breakdown)
+            
+            # Gera e exibe a narrativa
+            scores = {'quality': quality_score, 'value': value_score, 'momentum': momentum_score}
+            narrative = generate_narrative(scores, info)
+            st.info(f"**Tese de Investimento:** \"{narrative}\"")
             st.divider()
 
             st.subheader("Consenso de Mercado (Wall Street)")
