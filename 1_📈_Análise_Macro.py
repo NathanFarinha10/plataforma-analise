@@ -1,4 +1,4 @@
-# 1_📈_Análise_Macro.py (Versão 4.1 - Arquitetura de Timeouts)
+# 1_📈_Análise_Macro.py (Versão 4.2 - Fonte Instável Removida)
 
 import streamlit as st
 import pandas as pd
@@ -44,10 +44,11 @@ heatmap_indicators = {
     'Confiança do Consumidor': ('UMCSENT', 'level'), 'Spread da Curva de Juros (10Y-2Y)': ('T10Y2Y', 'level'),
     'Spread de Crédito High-Yield': ('BAMLH0A0HYM2', 'level_inv'), 'Índice de Volatilidade (VIX)': ('VIXCLS', 'level_inv')
 }
+# --- DICIONÁRIO DE FEEDS ATUALIZADO ---
 GESTORAS_FEEDS = {
-    "BlackRock": "https://www.blackrock.com/us/individual/insights/feed", "PIMCO": "https://blog.pimco.com/en/feed",
+    "BlackRock": "https://www.blackrock.com/us/individual/insights/feed",
+    "PIMCO": "https://blog.pimco.com/en/feed",
     "J.P. Morgan AM": "https://am.jpmorgan.com/us/en/asset-management/adv/insights/rss-feed/",
-    "Goldman Sachs AM": "https://www.gsam.com/content/gsam/us/en/institutions/market-insights/gsam-connect/rss.xml",
     "Bridgewater": "https://www.bridgewater.com/research-and-insights/feed"
 }
 
@@ -64,27 +65,34 @@ def fetch_bcb_series(series_code, start_date, end_date):
 
 @st.cache_data
 def calculate_heatmap_data(indicators, start_date, end_date):
-    df_raw = pd.DataFrame(); [df_raw.update({name: s.resample('M').last()}) for name, (code, _) in indicators.items() if not (s := fetch_fred_series(code, start_date, end_date)).empty]
+    df_raw = pd.DataFrame()
+    for name, (code, _) in indicators.items():
+        series = fetch_fred_series(code, start_date, end_date)
+        if not series.empty: df_raw[name] = series.resample('M').last()
     if df_raw.empty: return pd.DataFrame()
-    df_transformed = pd.DataFrame(); [df_transformed.update({name: s.pct_change(12) * 100 if t == 'yoy' else (s * -1 if t == 'level_inv' else s)}) for name, (_, t) in indicators.items() if name in df_raw.columns and not (s := df_raw[name].ffill()).empty]
+    df_transformed = pd.DataFrame()
+    for name, (_, trans_type) in indicators.items():
+        if name in df_raw.columns:
+            series = df_raw[name].ffill()
+            if trans_type == 'yoy': df_transformed[name] = series.pct_change(12) * 100
+            elif trans_type == 'level_inv': df_transformed[name] = series * -1
+            else: df_transformed[name] = series
     return df_transformed.rolling(window=120, min_periods=24).rank(pct=True) * 100
 
 def fetch_single_feed_with_timeout(gestora_url_tuple):
-    """Função alvo para a thread: busca um único feed com timeout de 10 segundos."""
+    """Busca um único feed com timeout de 10 segundos."""
     gestora, url = gestora_url_tuple
     original_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(10) # Define o timeout
+    socket.setdefaulttimeout(10)
     try:
         feed = feedparser.parse(url)
-        socket.setdefaulttimeout(original_timeout) # Restaura o timeout padrão
+        socket.setdefaulttimeout(original_timeout)
         if feed.entries:
-            for entry in feed.entries:
-                entry['gestora'] = gestora
+            for entry in feed.entries: entry['gestora'] = gestora
             return gestora, 'success', feed.entries
-        else:
-            return gestora, 'empty', []
+        else: return gestora, 'empty', []
     except Exception as e:
-        socket.setdefaulttimeout(original_timeout) # Garante que o timeout seja restaurado mesmo em caso de erro
+        socket.setdefaulttimeout(original_timeout)
         return gestora, 'fail', []
 
 def clean_html(raw_html):
@@ -104,26 +112,23 @@ def display_consensus_feed():
         st.session_state.feed_results = []
 
     if st.button("Buscar Últimos Relatórios", key="fetch_consensus"):
-        st.session_state.feed_results = [] # Limpa os resultados anteriores
+        st.session_state.feed_results = []
         progress_area = st.empty()
         
         with ThreadPoolExecutor(max_workers=len(GESTORAS_FEEDS)) as executor:
-            # Submete todas as tarefas e obtém os resultados
             results = executor.map(fetch_single_feed_with_timeout, GESTORAS_FEEDS.items())
             
-            # Processa os resultados à medida que chegam
             for gestora, status, entries in results:
                 if status == 'success':
                     progress_area.write(f"Buscando feed da **{gestora}**... ✅ Sucesso!")
                     st.session_state.feed_results.extend(entries)
                 elif status == 'empty':
                     progress_area.write(f"Buscando feed da **{gestora}**... ⚠️ Vazio ou sem novas entradas.")
-                else: # 'fail'
+                else:
                     progress_area.write(f"Buscando feed da **{gestora}**... ❌ Falhou (Timeout).")
         
         progress_area.empty()
         st.success("Busca concluída!")
-
 
     if st.session_state.feed_results:
         sorted_entries = sorted(st.session_state.feed_results, key=lambda x: x.get('published_parsed'), reverse=True)
@@ -136,7 +141,7 @@ def display_consensus_feed():
             st.caption(f"Fonte: **{entry.get('gestora')}** | Publicado em: {published_date}")
             summary = clean_html(entry.get('summary'))
             if summary:
-                st.caption(summary)
+                st.caption(summary, unsafe_allow_html=True)
             st.divider()
 
 # --- UI E LÓGICA PRINCIPAL ---
@@ -148,7 +153,6 @@ st.sidebar.header("Filtros de Período")
 start_date = st.sidebar.date_input('Data de Início', value=pd.to_datetime('2010-01-01'))
 end_date = st.sidebar.date_input('Data de Fim', value=datetime.today())
 
-# ... (A lógica de exibição das abas permanece a mesma da versão anterior)
 if "Brasil" in country_selection:
     st.header("Análise Detalhada: 🇧🇷 Brasil")
     tabs = st.tabs(["Atividade", "Inflação e Juros", "Emprego", "Setor Externo", "🌎 Consenso"])
