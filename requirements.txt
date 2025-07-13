@@ -5,5 +5,3 @@ plotly
 yfinance
 python-bcb
 matplotlib
-feedparser
-beautifulsoup4
