@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (Versão com PAG Score de Qualidade)
+# pages/2_🏢_Research_Empresas.py (Versão Final com PAG Score Completo)
 
 import streamlit as st
 import pandas as pd
@@ -78,16 +78,15 @@ def calculate_dupont_analysis(income_stmt, balance_sheet):
 
 def calculate_quality_score(info, dcf_data):
     scores = {}
-    roe = info.get('returnOnEquity', 0)
+    roe = info.get('returnOnEquity', 0) or 0
     if roe > 0.20: scores['ROE'] = 100
     elif roe > 0.15: scores['ROE'] = 75
-    elif roe > 0.05: scores['ROE'] = 50
-    else: scores['ROE'] = 0
-
-    op_margin = info.get('operatingMargins', 0)
+    else: scores['ROE'] = max(0, (roe / 0.15) * 75)
+    
+    op_margin = info.get('operatingMargins', 0) or 0
     if op_margin > 0.15: scores['Margem Operacional'] = 100
     elif op_margin > 0.05: scores['Margem Operacional'] = 75
-    else: scores['Margem Operacional'] = 25
+    else: scores['Margem Operacional'] = max(0, (op_margin / 0.05) * 75)
 
     if dcf_data and dcf_data.get('ebitda') and dcf_data['ebitda'] > 0:
         net_debt_ebitda = dcf_data['net_debt'] / dcf_data['ebitda']
@@ -97,24 +96,69 @@ def calculate_quality_score(info, dcf_data):
         else: scores['Alavancagem'] = 0
     
     if not scores: return 0, {}
-    final_score = np.mean(list(scores.values()))
-    return final_score, scores
+    return np.mean(list(scores.values())), scores
 
 def get_rating_from_score(score):
     if score >= 85: return "Excelente", "💎"
-    elif score >= 70: return "Alta", "🟢"
-    elif score >= 50: return "Média", "🟡"
-    else: return "Baixa", "🔴"
+    elif score >= 70: return "Atrativo", "🟢"
+    elif score >= 50: return "Neutro", "🟡"
+    else: return "Inatrativo", "🔴"
+
+def calculate_value_score(info, comps_df, dcf_upside):
+    scores = {}
+    pe = info.get('trailingPE')
+    if pe and not comps_df.empty:
+        peers_pe = comps_df['P/L'].median()
+        if peers_pe > 0:
+            if pe < peers_pe * 0.8: scores['P/L Relativo'] = 100
+            elif pe < peers_pe: scores['P/L Relativo'] = 75
+            else: scores['P/L Relativo'] = 25
+    
+    if dcf_upside is not None:
+        if dcf_upside > 50: scores['DCF Upside'] = 100
+        elif dcf_upside > 20: scores['DCF Upside'] = 75
+        elif dcf_upside > 0: scores['DCF Upside'] = 50
+        else: scores['DCF Upside'] = 0
+
+    if not scores: return 0, {}
+    return np.mean(list(scores.values())), scores
+
+@st.cache_data
+def calculate_momentum_score(ticker_symbol):
+    scores = {}
+    is_br = '.SA' in ticker_symbol
+    benchmark = '^BVSP' if is_br else '^GSPC'
+    
+    try:
+        data = yf.download([ticker_symbol, benchmark], period='1y', progress=False)['Close']
+        if data.empty: return 0, {}
+
+        data['SMA200'] = data[ticker_symbol].rolling(window=200).mean()
+        last_price = data[ticker_symbol].iloc[-1]
+        last_sma200 = data['SMA200'].iloc[-1]
+        if last_price > last_sma200: scores['Tendência Longo Prazo (vs. MME200)'] = 100
+        else: scores['Tendência Longo Prazo (vs. MME200)'] = 0
+        
+        returns = data.pct_change()
+        for period in [3, 6, 9]:
+            days = int(period * 21)
+            if len(data) > days:
+                asset_return = (1 + returns[ticker_symbol].tail(days)).prod() - 1
+                bench_return = (1 + returns[benchmark].tail(days)).prod() - 1
+                if asset_return > bench_return: scores[f'Força Relativa {period}M'] = 100
+                else: scores[f'Força Relativa {period}M'] = 0
+    except Exception: return 0, {}
+        
+    if not scores: return 0, {}
+    return np.mean(list(scores.values())), scores
 
 # --- UI E LÓGICA PRINCIPAL ---
 st.title("Painel de Research de Empresas")
 st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
 
-st.sidebar.header("Filtros de Análise")
-ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
+st.sidebar.header("Filtros de Análise"); ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
 peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
-st.sidebar.subheader("Premissas do Modelo DCF")
-growth_rate = st.sidebar.number_input("Taxa de Crescimento do FCF (anual %)", value=5.0, step=0.5, format="%.1f") / 100
+st.sidebar.subheader("Premissas do Modelo DCF"); growth_rate = st.sidebar.number_input("Taxa de Crescimento do FCF (anual %)", value=5.0, step=0.5, format="%.1f") / 100
 terminal_growth_rate = st.sidebar.number_input("Taxa de Perpetuidade (%)", value=2.5, step=0.1, format="%.1f") / 100
 wacc_rate = st.sidebar.number_input("Taxa de Desconto (WACC %)", value=9.0, step=0.5, format="%.1f") / 100
 
@@ -128,19 +172,38 @@ if analyze_button:
         if not info.get('longName'):
             st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido.")
         else:
-            dcf_data = get_dcf_data_from_yf(ticker_symbol)
+            with st.spinner("Analisando... Este processo pode levar um momento."):
+                dcf_data = get_dcf_data_from_yf(ticker_symbol)
+                peer_tickers = [p.strip() for p in peers_string.split(",")] if peers_string else []
+                comps_df = get_key_stats(peer_tickers)
 
             st.header(f"Análise de {info['longName']} ({info['symbol']})")
 
             st.subheader(f"Rating Proprietário (PAG Score)")
-            quality_score, breakdown_scores = calculate_quality_score(info, dcf_data)
+            dcf_upside = None
+            if dcf_data:
+                intrinsic_value = calculate_dcf(fcf=dcf_data['fcf'], net_debt=dcf_data['net_debt'], shares_outstanding=dcf_data['shares_outstanding'], g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate)
+                current_price = info.get('currentPrice')
+                if current_price and intrinsic_value > 0:
+                    dcf_upside = ((intrinsic_value / current_price) - 1) * 100
+            
+            quality_score, quality_breakdown = calculate_quality_score(info, dcf_data)
             quality_rating, quality_emoji = get_rating_from_score(quality_score)
+            value_score, value_breakdown = calculate_value_score(info, comps_df, dcf_upside)
+            value_rating, value_emoji = get_rating_from_score(value_score)
+            momentum_score, momentum_breakdown = calculate_momentum_score(ticker_symbol)
+            momentum_rating, momentum_emoji = get_rating_from_score(momentum_score)
+
             col1_rat, col2_rat, col3_rat = st.columns(3)
-            col1_rat.metric("Qualidade", f"{quality_rating} {quality_emoji}", f"{quality_score:.0f} / 100")
-            col2_rat.metric("Valor (Value)", "Em Breve")
-            col3_rat.metric("Momento", "Em Breve")
-            with st.expander("Ver detalhes do Score de Qualidade"):
-                st.write(breakdown_scores)
+            with col1_rat:
+                st.metric("Qualidade", f"{quality_rating} {quality_emoji}", f"{quality_score:.0f} / 100")
+                with st.expander("Detalhes"): st.write(quality_breakdown)
+            with col2_rat:
+                st.metric("Valor (Value)", f"{value_rating} {value_emoji}", f"{value_score:.0f} / 100")
+                with st.expander("Detalhes"): st.write(value_breakdown)
+            with col3_rat:
+                st.metric("Momento", f"{momentum_rating} {momentum_emoji}", f"{momentum_score:.0f} / 100")
+                with st.expander("Detalhes"): st.write(momentum_breakdown)
             st.divider()
 
             st.subheader("Consenso de Mercado (Wall Street)")
@@ -164,42 +227,34 @@ if analyze_button:
             with st.expander("Descrição da Empresa"): st.write(info.get('longBusinessSummary', 'Descrição não disponível.'))
 
             st.header("Análise Financeira Histórica e DuPont")
-            with st.spinner("Buscando demonstrações financeiras anuais..."):
-                ticker_obj = yf.Ticker(ticker_symbol)
-                income_statement = ticker_obj.income_stmt
-                balance_sheet = ticker_obj.balance_sheet
-                cash_flow = ticker_obj.cashflow
-                tab_dre, tab_bp, tab_fcf, tab_dupont = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont"])
-                with tab_dre:
-                    st.subheader("Evolução da Receita e Lucro")
-                    dre_items = ['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income']
-                    dre_df = income_statement[income_statement.index.isin(dre_items)]; plot_financial_statement(dre_df, "Demonstração de Resultados Anual")
-                with tab_bp:
-                    st.subheader("Evolução dos Ativos e Passivos")
-                    bp_items = ['Total Assets', 'Total Liabilities Net Minority Interest', 'Stockholders Equity']
-                    bp_df = balance_sheet[balance_sheet.index.isin(bp_items)]; plot_financial_statement(bp_df, "Balanço Patrimonial Anual")
-                with tab_fcf:
-                    st.subheader("Evolução dos Fluxos de Caixa")
-                    fcf_items = ['Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'Free Cash Flow']
-                    fcf_items_available = [item for item in fcf_items if item in cash_flow.index]
-                    fcf_df = cash_flow[cash_flow.index.isin(fcf_items_available)]; plot_financial_statement(fcf_df, "Fluxo de Caixa Anual")
-                with tab_dupont:
-                    st.subheader("Decomposição do ROE (Return on Equity)")
-                    dupont_df = calculate_dupont_analysis(income_statement, balance_sheet)
-                    if not dupont_df.empty:
-                        st.dataframe(dupont_df.style.format("{:.2f}"), use_container_width=True)
-                        df_plot = dupont_df.T.sort_index(); df_plot.index = df_plot.index.year
-                        fig_dupont = px.line(df_plot, markers=True, title="Evolução dos Componentes do ROE")
-                        fig_dupont.update_layout(xaxis_title="Ano", yaxis_title="Valor / Múltiplo", legend_title="Componentes"); st.plotly_chart(fig_dupont, use_container_width=True)
-                        st.caption("ROE = (Margem Líquida) x (Giro do Ativo) x (Alavancagem Financeira)")
-                    else: st.warning("Não foi possível calcular a Análise DuPont.")
+            ticker_obj = yf.Ticker(ticker_symbol)
+            income_statement = ticker_obj.income_stmt
+            balance_sheet = ticker_obj.balance_sheet
+            cash_flow = ticker_obj.cashflow
+            tab_dre, tab_bp, tab_fcf, tab_dupont = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont"])
+            with tab_dre:
+                st.subheader("Evolução da Receita e Lucro"); dre_items = ['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income']
+                dre_df = income_statement[income_statement.index.isin(dre_items)]; plot_financial_statement(dre_df, "Demonstração de Resultados Anual")
+            with tab_bp:
+                st.subheader("Evolução dos Ativos e Passivos"); bp_items = ['Total Assets', 'Total Liabilities Net Minority Interest', 'Stockholders Equity']
+                bp_df = balance_sheet[balance_sheet.index.isin(bp_items)]; plot_financial_statement(bp_df, "Balanço Patrimonial Anual")
+            with tab_fcf:
+                st.subheader("Evolução dos Fluxos de Caixa"); fcf_items = ['Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'Free Cash Flow']
+                fcf_items_available = [item for item in fcf_items if item in cash_flow.index]
+                fcf_df = cash_flow[cash_flow.index.isin(fcf_items_available)]; plot_financial_statement(fcf_df, "Fluxo de Caixa Anual")
+            with tab_dupont:
+                st.subheader("Decomposição do ROE (Return on Equity)")
+                dupont_df = calculate_dupont_analysis(income_statement, balance_sheet)
+                if not dupont_df.empty:
+                    st.dataframe(dupont_df.style.format("{:.2f}"), use_container_width=True)
+                    df_plot = dupont_df.T.sort_index(); df_plot.index = df_plot.index.year
+                    fig_dupont = px.line(df_plot, markers=True, title="Evolução dos Componentes do ROE")
+                    fig_dupont.update_layout(xaxis_title="Ano", yaxis_title="Valor / Múltiplo", legend_title="Componentes"); st.plotly_chart(fig_dupont, use_container_width=True)
+                    st.caption("ROE = (Margem Líquida) x (Giro do Ativo) x (Alavancagem Financeira)")
+                else: st.warning("Não foi possível calcular a Análise DuPont.")
             
             st.header("Análise Comparativa de Múltiplos (Comps)")
             if peers_string:
-                peer_tickers = [p.strip() for p in peers_string.split(",")]
-                all_tickers = [ticker_symbol] + peer_tickers
-                with st.spinner("Buscando dados dos concorrentes..."):
-                    comps_df = get_key_stats(all_tickers)
                 if not comps_df.empty:
                     metric_cols = ['P/L', 'P/VP', 'EV/EBITDA', 'Dividend Yield (%)', 'ROE (%)', 'Margem Bruta (%)']
                     for col in metric_cols: comps_df[col] = pd.to_numeric(comps_df[col], errors='coerce')
@@ -213,19 +268,15 @@ if analyze_button:
             else: st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
             
             st.header(f"Valuation por DCF (Modelo Proprietário)")
-            with st.spinner("Calculando o DCF..."):
-                if dcf_data:
-                    intrinsic_value = calculate_dcf(fcf=dcf_data['fcf'], net_debt=dcf_data['net_debt'], shares_outstanding=dcf_data['shares_outstanding'], g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate)
-                    if intrinsic_value > 0:
-                        upside_dcf = ((intrinsic_value / current_price) - 1) * 100
-                        st.subheader("Resultado do Valuation")
-                        col1_dcf, col2_dcf, col3_dcf = st.columns(3)
-                        col1_dcf.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
-                        col2_dcf.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
-                        col3_dcf.metric("Potencial de Upside/Downside", f"{upside_dcf:.2f}%")
-                        if upside_dcf > 20: st.success(f"RECOMENDAÇÃO (MODELO PAG): COMPRAR")
-                        elif upside_dcf < -20: st.error(f"RECOMENDAÇÃO (MODELO PAG): VENDER")
-                        else: st.warning(f"RECOMENDAÇÃO (MODELO PAG): MANTER")
+            if dcf_data and intrinsic_value > 0:
+                st.subheader("Resultado do Valuation")
+                col1_dcf, col2_dcf, col3_dcf = st.columns(3)
+                col1_dcf.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
+                col2_dcf.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
+                col3_dcf.metric("Potencial de Upside/Downside", f"{dcf_upside:.2f}%")
+                if dcf_upside > 20: st.success(f"RECOMENDAÇÃO (MODELO PAG): COMPRAR")
+                elif dcf_upside < -20: st.error(f"RECOMENDAÇÃO (MODELO PAG): VENDER")
+                else: st.warning(f"RECOMENDAÇÃO (MODELO PAG): MANTER")
 
             st.header("Histórico de Cotações")
             hist_df = yf.Ticker(ticker_symbol).history(period="5y")
