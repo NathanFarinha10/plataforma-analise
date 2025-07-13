@@ -1,4 +1,4 @@
-# 1_📈_Análise_Macro.py (Versão 4.0 - Carga Sob Demanda)
+# 1_📈_Análise_Macro.py (Versão 4.1 - Arquitetura de Timeouts)
 
 import streamlit as st
 import pandas as pd
@@ -9,6 +9,8 @@ from datetime import datetime
 import numpy as np
 import feedparser
 from bs4 import BeautifulSoup
+import socket
+from concurrent.futures import ThreadPoolExecutor
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
@@ -22,7 +24,6 @@ except Exception as e:
     st.error(f"Falha ao inicializar API do FRED: {e}"); st.stop()
 
 # --- DICIONÁRIOS DE CÓDIGOS ---
-# (Dicionários de códigos permanecem os mesmos)
 fred_codes_us = {
     "Atividade": {"PIB (Cresc. Anual %)": "A191RL1Q225SBEA", "Produção Industrial (Variação Anual %)": "INDPRO", "Vendas no Varejo (Variação Anual %)": "RSAFS", "Confiança do Consumidor": "UMCSENT"},
     "Inflação e Juros": {"Inflação ao Consumidor (CPI YoY)": "CPIAUCSL", "Inflação ao Produtor (PPI YoY)": "PPIACO", "Taxa de Juros (Fed Funds)": "FEDFUNDS", "Juro 10 Anos": "DGS10", "Juro 2 Anos": "DGS2"},
@@ -63,69 +64,80 @@ def fetch_bcb_series(series_code, start_date, end_date):
 
 @st.cache_data
 def calculate_heatmap_data(indicators, start_date, end_date):
-    # (código desta função permanece o mesmo)
     df_raw = pd.DataFrame(); [df_raw.update({name: s.resample('M').last()}) for name, (code, _) in indicators.items() if not (s := fetch_fred_series(code, start_date, end_date)).empty]
     if df_raw.empty: return pd.DataFrame()
     df_transformed = pd.DataFrame(); [df_transformed.update({name: s.pct_change(12) * 100 if t == 'yoy' else (s * -1 if t == 'level_inv' else s)}) for name, (_, t) in indicators.items() if name in df_raw.columns and not (s := df_raw[name].ffill()).empty]
     return df_transformed.rolling(window=120, min_periods=24).rank(pct=True) * 100
+
+def fetch_single_feed_with_timeout(gestora_url_tuple):
+    """Função alvo para a thread: busca um único feed com timeout de 10 segundos."""
+    gestora, url = gestora_url_tuple
+    original_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(10) # Define o timeout
+    try:
+        feed = feedparser.parse(url)
+        socket.setdefaulttimeout(original_timeout) # Restaura o timeout padrão
+        if feed.entries:
+            for entry in feed.entries:
+                entry['gestora'] = gestora
+            return gestora, 'success', feed.entries
+        else:
+            return gestora, 'empty', []
+    except Exception as e:
+        socket.setdefaulttimeout(original_timeout) # Garante que o timeout seja restaurado mesmo em caso de erro
+        return gestora, 'fail', []
 
 def clean_html(raw_html):
     return BeautifulSoup(raw_html, "html.parser").get_text(separator=" ", strip=True) if raw_html else ""
 
 def plot_indicator(data, title, key_suffix):
     if data.empty:
-        st.info(f"Dados para '{title}' não disponíveis.")
-        return
-    fig = px.line(data, title=title)
-    fig.update_layout(showlegend=False, xaxis_title="Data", yaxis_title="Valor")
+        st.info(f"Dados para '{title}' não disponíveis."); return
+    fig = px.line(data, title=title); fig.update_layout(showlegend=False, xaxis_title="Data", yaxis_title="Valor")
     st.plotly_chart(fig, use_container_width=True, key=f"plotly_{key_suffix}")
 
-# --- NOVA FUNÇÃO PARA A ABA DE CONSENSO ---
 def display_consensus_feed():
     st.subheader("A Visão das Gestoras Globais")
-    st.info("Clique no botão abaixo para buscar em tempo real os últimos relatórios e artigos das principais gestoras.")
+    st.info("Clique no botão abaixo para buscar em tempo real os últimos relatórios e artigos.")
+
+    if 'feed_results' not in st.session_state:
+        st.session_state.feed_results = []
 
     if st.button("Buscar Últimos Relatórios", key="fetch_consensus"):
-        all_entries = []
+        st.session_state.feed_results = [] # Limpa os resultados anteriores
         progress_area = st.empty()
         
-        for gestora, url in GESTORAS_FEEDS.items():
-            progress_area.write(f"Buscando feed da **{gestora}**...")
-            try:
-                # O feedparser tem um timeout interno, mas a chamada de rede pode ser lenta.
-                feed = feedparser.parse(url)
-                if feed.entries:
-                    for entry in feed.entries:
-                        entry['gestora'] = gestora
-                    all_entries.extend(feed.entries)
+        with ThreadPoolExecutor(max_workers=len(GESTORAS_FEEDS)) as executor:
+            # Submete todas as tarefas e obtém os resultados
+            results = executor.map(fetch_single_feed_with_timeout, GESTORAS_FEEDS.items())
+            
+            # Processa os resultados à medida que chegam
+            for gestora, status, entries in results:
+                if status == 'success':
                     progress_area.write(f"Buscando feed da **{gestora}**... ✅ Sucesso!")
-                else:
-                    progress_area.write(f"Buscando feed da **{gestora}**... ⚠️ Vazio ou com erro.")
-            except Exception:
-                progress_area.write(f"Buscando feed da **{gestora}**... ❌ Falhou.")
+                    st.session_state.feed_results.extend(entries)
+                elif status == 'empty':
+                    progress_area.write(f"Buscando feed da **{gestora}**... ⚠️ Vazio ou sem novas entradas.")
+                else: # 'fail'
+                    progress_area.write(f"Buscando feed da **{gestora}**... ❌ Falhou (Timeout).")
         
         progress_area.empty()
+        st.success("Busca concluída!")
 
-        if all_entries:
-            sorted_entries = sorted(all_entries, key=lambda x: x.get('published_parsed'), reverse=True)
-            st.success(f"Busca concluída! Exibindo os {min(25, len(sorted_entries))} artigos mais recentes.")
-            for entry in sorted_entries[:25]:
-                try: published_date = pd.to_datetime(entry.get('published')).strftime('%d/%m/%Y')
-                except: published_date = "Data Indisponível"
-                
-                # Usar colunas para melhor layout
-                col1, col2 = st.columns([1, 10])
-                with col1:
-                    st.write(f"**{entry.get('gestora')}**")
-                    st.caption(published_date)
-                with col2:
-                    st.markdown(f"**[{entry.get('title', 'N/A')}]({entry.get('link', '#')})**")
-                    summary = clean_html(entry.get('summary'))
-                    st.caption(summary, unsafe_allow_html=True)
-                st.divider()
-        else:
-            st.error("Nenhum artigo pôde ser carregado. Isso pode ser devido a uma instabilidade temporária nas fontes ou na rede.")
 
+    if st.session_state.feed_results:
+        sorted_entries = sorted(st.session_state.feed_results, key=lambda x: x.get('published_parsed'), reverse=True)
+        st.info(f"Exibindo os {min(25, len(sorted_entries))} artigos mais recentes encontrados.")
+        for entry in sorted_entries[:25]:
+            try: published_date = pd.to_datetime(entry.get('published')).strftime('%d/%m/%Y')
+            except: published_date = "Data Indisponível"
+            
+            st.markdown(f"##### [{entry.get('title', 'N/A')}]({entry.get('link', '#')})")
+            st.caption(f"Fonte: **{entry.get('gestora')}** | Publicado em: {published_date}")
+            summary = clean_html(entry.get('summary'))
+            if summary:
+                st.caption(summary)
+            st.divider()
 
 # --- UI E LÓGICA PRINCIPAL ---
 st.title("Cockpit Macroeconômico")
@@ -136,10 +148,7 @@ st.sidebar.header("Filtros de Período")
 start_date = st.sidebar.date_input('Data de Início', value=pd.to_datetime('2010-01-01'))
 end_date = st.sidebar.date_input('Data de Fim', value=datetime.today())
 
-# --- LÓGICA DE EXIBIÇÃO DAS ABAS ---
-# ... (o código para exibir as abas do Brasil e as outras abas dos EUA permanece o mesmo,
-# mas a aba "Consenso" agora chama a nova função 'display_consensus_feed')
-
+# ... (A lógica de exibição das abas permanece a mesma da versão anterior)
 if "Brasil" in country_selection:
     st.header("Análise Detalhada: 🇧🇷 Brasil")
     tabs = st.tabs(["Atividade", "Inflação e Juros", "Emprego", "Setor Externo", "🌎 Consenso"])
@@ -193,10 +202,8 @@ elif "EUA" in country_selection:
             fig = px.area(yield_spread, title="Spread 10 Anos - 2 Anos (EUA)"); fig.add_hline(y=0, line_dash="dash", line_color="red"); fig.update_layout(showlegend=False); st.plotly_chart(fig, use_container_width=True, key="yield_curve")
             st.caption("Inversão da curva (valores < 0) é um forte indicador de recessão futura.")
     with tabs[3]:
-        for name, code in fred_codes_us["Emprego"].items():
-            plot_indicator(fetch_fred_series(code, start_date, end_date), name, key_suffix=f"us_emp_{code}")
+        for name, code in fred_codes_us["Emprego"].items(): plot_indicator(fetch_fred_series(code, start_date, end_date), name, key_suffix=f"us_emp_{code}")
     with tabs[4]:
-        for name, code in fred_codes_us["Setor Externo"].items():
-            plot_indicator(fetch_fred_series(code, start_date, end_date), name, key_suffix=f"us_ext_{code}")
+        for name, code in fred_codes_us["Setor Externo"].items(): plot_indicator(fetch_fred_series(code, start_date, end_date), name, key_suffix=f"us_ext_{code}")
     with tabs[5]:
         display_consensus_feed()
