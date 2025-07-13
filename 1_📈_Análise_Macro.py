@@ -1,4 +1,4 @@
-# 1_📈_Análise_Macro.py (Versão 4.2 - Fonte Instável Removida)
+# 1_📈_Análise_Macro.py (Versão 4.3 - Lógica de Exibição Corrigida)
 
 import streamlit as st
 import pandas as pd
@@ -44,7 +44,6 @@ heatmap_indicators = {
     'Confiança do Consumidor': ('UMCSENT', 'level'), 'Spread da Curva de Juros (10Y-2Y)': ('T10Y2Y', 'level'),
     'Spread de Crédito High-Yield': ('BAMLH0A0HYM2', 'level_inv'), 'Índice de Volatilidade (VIX)': ('VIXCLS', 'level_inv')
 }
-# --- DICIONÁRIO DE FEEDS ATUALIZADO ---
 GESTORAS_FEEDS = {
     "BlackRock": "https://www.blackrock.com/us/individual/insights/feed",
     "PIMCO": "https://blog.pimco.com/en/feed",
@@ -65,22 +64,12 @@ def fetch_bcb_series(series_code, start_date, end_date):
 
 @st.cache_data
 def calculate_heatmap_data(indicators, start_date, end_date):
-    df_raw = pd.DataFrame()
-    for name, (code, _) in indicators.items():
-        series = fetch_fred_series(code, start_date, end_date)
-        if not series.empty: df_raw[name] = series.resample('M').last()
+    df_raw = pd.DataFrame(); [df_raw.update({name: s.resample('M').last()}) for name, (code, _) in indicators.items() if not (s := fetch_fred_series(code, start_date, end_date)).empty]
     if df_raw.empty: return pd.DataFrame()
-    df_transformed = pd.DataFrame()
-    for name, (_, trans_type) in indicators.items():
-        if name in df_raw.columns:
-            series = df_raw[name].ffill()
-            if trans_type == 'yoy': df_transformed[name] = series.pct_change(12) * 100
-            elif trans_type == 'level_inv': df_transformed[name] = series * -1
-            else: df_transformed[name] = series
+    df_transformed = pd.DataFrame(); [df_transformed.update({name: s.pct_change(12) * 100 if t == 'yoy' else (s * -1 if t == 'level_inv' else s)}) for name, (_, t) in indicators.items() if name in df_raw.columns and not (s := df_raw[name].ffill()).empty]
     return df_transformed.rolling(window=120, min_periods=24).rank(pct=True) * 100
 
 def fetch_single_feed_with_timeout(gestora_url_tuple):
-    """Busca um único feed com timeout de 10 segundos."""
     gestora, url = gestora_url_tuple
     original_timeout = socket.getdefaulttimeout()
     socket.setdefaulttimeout(10)
@@ -108,41 +97,41 @@ def display_consensus_feed():
     st.subheader("A Visão das Gestoras Globais")
     st.info("Clique no botão abaixo para buscar em tempo real os últimos relatórios e artigos.")
 
-    if 'feed_results' not in st.session_state:
-        st.session_state.feed_results = []
-
     if st.button("Buscar Últimos Relatórios", key="fetch_consensus"):
-        st.session_state.feed_results = []
-        progress_area = st.empty()
+        all_entries = []
+        status_placeholder = st.empty()
         
-        with ThreadPoolExecutor(max_workers=len(GESTORAS_FEEDS)) as executor:
-            results = executor.map(fetch_single_feed_with_timeout, GESTORAS_FEEDS.items())
-            
-            for gestora, status, entries in results:
-                if status == 'success':
-                    progress_area.write(f"Buscando feed da **{gestora}**... ✅ Sucesso!")
-                    st.session_state.feed_results.extend(entries)
-                elif status == 'empty':
-                    progress_area.write(f"Buscando feed da **{gestora}**... ⚠️ Vazio ou sem novas entradas.")
-                else:
-                    progress_area.write(f"Buscando feed da **{gestora}**... ❌ Falhou (Timeout).")
-        
-        progress_area.empty()
-        st.success("Busca concluída!")
+        with st.spinner("Buscando feeds..."):
+            with ThreadPoolExecutor(max_workers=len(GESTORAS_FEEDS)) as executor:
+                results = executor.map(fetch_single_feed_with_timeout, GESTORAS_FEEDS.items())
+                
+                status_messages = []
+                for gestora, status, entries in results:
+                    if status == 'success':
+                        status_messages.append(f"<li>{gestora}: ✅ Sucesso</li>")
+                        all_entries.extend(entries)
+                    else:
+                        status_messages.append(f"<li>{gestora}: ❌ Falhou (Timeout ou Vazio)</li>")
+                
+                status_placeholder.markdown("<ul>" + "".join(status_messages) + "</ul>", unsafe_allow_html=True)
 
-    if st.session_state.feed_results:
-        sorted_entries = sorted(st.session_state.feed_results, key=lambda x: x.get('published_parsed'), reverse=True)
-        st.info(f"Exibindo os {min(25, len(sorted_entries))} artigos mais recentes encontrados.")
-        for entry in sorted_entries[:25]:
-            try: published_date = pd.to_datetime(entry.get('published')).strftime('%d/%m/%Y')
-            except: published_date = "Data Indisponível"
-            
-            st.markdown(f"##### [{entry.get('title', 'N/A')}]({entry.get('link', '#')})")
-            st.caption(f"Fonte: **{entry.get('gestora')}** | Publicado em: {published_date}")
-            summary = clean_html(entry.get('summary'))
-            if summary:
-                st.caption(summary, unsafe_allow_html=True)
+        if all_entries:
+            sorted_entries = sorted(all_entries, key=lambda x: x.get('published_parsed'), reverse=True)
+            st.success(f"Busca concluída! Exibindo os {min(25, len(sorted_entries))} artigos mais recentes encontrados.")
             st.divider()
+            
+            for entry in sorted_entries[:25]:
+                try: published_date = pd.to_datetime(entry.get('published')).strftime('%d/%m/%Y')
+                except: published_date = "Data Indisponível"
+                
+                st.markdown(f"##### [{entry.get('title', 'Título não disponível')}]({entry.get('link', '#')})")
+                st.caption(f"Fonte: **{entry.get('gestora')}** | Publicado em: {published_date}")
+                summary = clean_html(entry.get('summary'))
+                if summary:
+                    st.caption(summary, unsafe_allow_html=True)
+                st.divider()
+        else:
+            st.error("Nenhum artigo pôde ser carregado na busca atual.")
 
 # --- UI E LÓGICA PRINCIPAL ---
 st.title("Cockpit Macroeconômico")
@@ -153,6 +142,7 @@ st.sidebar.header("Filtros de Período")
 start_date = st.sidebar.date_input('Data de Início', value=pd.to_datetime('2010-01-01'))
 end_date = st.sidebar.date_input('Data de Fim', value=datetime.today())
 
+# ... (A lógica de exibição das abas permanece a mesma da versão anterior)
 if "Brasil" in country_selection:
     st.header("Análise Detalhada: 🇧🇷 Brasil")
     tabs = st.tabs(["Atividade", "Inflação e Juros", "Emprego", "Setor Externo", "🌎 Consenso"])
