@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (Versão Final com Narrativas e Correção de Lógica)
+# pages/2_🏢_Research_Empresas.py (Versão de Produção 1.3 - Corrigida)
 
 import streamlit as st
 import pandas as pd
@@ -37,38 +37,39 @@ def get_key_stats(tickers):
 
 @st.cache_data
 def get_financial_data(ticker_symbol):
-    """Busca todos os dados financeiros com depuração de erros aprimorada."""
+    """Busca todos os dados financeiros com os nomes de índice corretos."""
     try:
         ticker = yf.Ticker(ticker_symbol)
         info = ticker.info
-        if not info.get('longName'): return None
         
-        # Para depuração, podemos exibir as chaves disponíveis
-        st.write("Índices do Fluxo de Caixa (Cashflow):", ticker.cashflow.index.tolist())
-        st.write("Índices do Balanço Patrimonial (Balance Sheet):", ticker.balance_sheet.index.tolist())
+        if not info.get('longName'): return None
 
+        # --- CORREÇÃO FINAL COM OS NOMES EXATOS ---
         op_cash_flow = ticker.cashflow.loc['Operating Cash Flow'].iloc[0]
         capex = ticker.cashflow.loc['Capital Expenditure'].iloc[0]
         fcf = op_cash_flow + capex
+        
         total_liab = ticker.balance_sheet.loc['Total Liabilities Net Minority Interest'].iloc[0]
         total_cash = ticker.balance_sheet.loc['Cash And Cash Equivalents'].iloc[0]
         net_debt = total_liab - total_cash
+        
         shares_outstanding = info['sharesOutstanding']
         
         financials = {
-            'info': info, 'income_stmt': ticker.income_stmt,
-            'balance_sheet': ticker.balance_sheet, 'cash_flow': ticker.cashflow,
+            'info': info,
+            'income_stmt': ticker.income_stmt,
+            'balance_sheet': ticker.balance_sheet,
+            'cash_flow': ticker.cashflow,
             'dcf_data': {
                 'fcf': fcf, 'net_debt': net_debt, 
                 'shares_outstanding': shares_outstanding, 'ebitda': info.get('ebitda')
             }
         }
         return financials
-    except Exception as e:
-        # Exibe o erro exato na tela
-        st.error(f"Erro detalhado ao buscar dados financeiros em get_financial_data: {e}")
+    except Exception:
+        # Falha silenciosamente para permitir que o app mostre um aviso amigável
         return None
-        
+
 def calculate_dcf(dcf_data, g, tg, wacc):
     if (wacc - tg) <= 0: return 0
     fcf_proj = [dcf_data['fcf'] * (1 + g)**i for i in range(1, 6)]
@@ -90,8 +91,7 @@ def calculate_dupont_analysis(income_stmt, balance_sheet):
         net_income = income_stmt.loc['Net Income']; revenue = income_stmt.loc['Total Revenue']
         total_assets = balance_sheet.loc['Total Assets']; equity = balance_sheet.loc['Stockholders Equity']
         net_profit_margin = (net_income / revenue) * 100; asset_turnover = revenue / total_assets
-        financial_leverage = total_assets / equity
-        roe = net_profit_margin * asset_turnover * financial_leverage / 100
+        financial_leverage = total_assets / equity; roe = net_profit_margin * asset_turnover * financial_leverage / 100
         return pd.DataFrame({'Margem Líquida (%)': net_profit_margin, 'Giro do Ativo': asset_turnover, 'Alavancagem Financeira': financial_leverage, 'ROE Calculado (%)': roe}).T.sort_index(axis=1)
     except KeyError: return pd.DataFrame()
 
@@ -170,7 +170,6 @@ def generate_narrative(scores, info, growth_narrative, margin_narrative):
     if momentum_score >= 70: m_phrase = "e que atualmente desfruta de um forte momento de mercado."
     elif momentum_score >= 50: m_phrase = f"com um momento de mercado neutro."
     else: m_phrase = f"apesar de um momento de mercado desafiador."
-    
     tese = f"Nossa análise indica que **{info.get('shortName', 'a empresa')}** é {q_phrase}, {v_phrase} {m_phrase}"
     return tese
 
@@ -186,8 +185,7 @@ def analyze_growth(income_stmt, info):
         narrative = f"A companhia demonstrou um crescimento de receita histórico de **{cagr:.2%} ao ano** nos últimos {num_years+1} anos, passando de {start_value/1e9:.2f}B para {end_value/1e9:.2f}B. "
         if analyst_growth_estimate is not None:
             narrative += f"A expectativa de crescimento para o próximo ano, segundo o consenso de analistas, é de **{analyst_growth_estimate:.2%}**, indicando uma potencial {'aceleração' if analyst_growth_estimate > cagr else 'desaceleração'} em relação ao ritmo histórico."
-        else:
-            narrative += "Não há estimativas claras do consenso de analistas para o crescimento futuro da receita."
+        else: narrative += "Não há estimativas claras do consenso de analistas para o crescimento futuro da receita."
         return narrative
     except Exception: return "Não foi possível gerar a análise de crescimento de receita."
 
@@ -237,7 +235,7 @@ if analyze_button:
             
             st.header(f"Análise de {info['longName']} ({info['symbol']})")
             
-            # --- SEÇÃO 1: RATING E NARRATIVA ---
+            # SEÇÃO 1: RATING E NARRATIVA
             st.subheader(f"Rating Proprietário (PAG Score) & Tese de Investimento")
             dcf_upside = None
             if dcf_data:
@@ -262,12 +260,12 @@ if analyze_button:
             growth_narrative = analyze_growth(income_statement, info)
             margin_narrative = analyze_margins(income_statement, comps_df)
             scores = {'quality': quality_score, 'value': value_score, 'momentum': momentum_score}
-            info['dcf_upside'] = dcf_upside # Adiciona para uso na narrativa final
+            info['dcf_upside'] = dcf_upside
             tese = generate_narrative(scores, info, growth_narrative, margin_narrative)
             st.info(f"**Tese Sumarizada:** \"{tese}\"")
             st.divider()
 
-            # --- SEÇÃO 2: ANÁLISE NARRATIVA DETALHADA ---
+            # SEÇÃO 2: ANÁLISE NARRATIVA DETALHADA
             st.header("Análise Detalhada dos Indicadores")
             st.subheader("Crescimento de Receita")
             st.write(growth_narrative)
@@ -276,7 +274,7 @@ if analyze_button:
             st.write(margin_narrative)
             st.divider()
 
-            # --- SEÇÃO 3: CONSENSO DE MERCADO ---
+            # SEÇÃO 3: CONSENSO DE MERCADO
             st.subheader("Consenso de Mercado (Wall Street)")
             recommendation = info.get('recommendationKey', 'N/A'); target_price = info.get('targetMeanPrice', 0); analyst_count = info.get('numberOfAnalystOpinions', 0)
             col1_cons, col2_cons, col3_cons, col4_cons = st.columns(4)
@@ -288,7 +286,7 @@ if analyze_button:
             else: col3_cons.metric("Upside do Consenso", "N/A")
             col4_cons.metric("Nº de Analistas", f"{analyst_count}" if analyst_count > 0 else "N/A")
             
-            # --- SEÇÃO 4: ANÁLISE HISTÓRICA DETALHADA ---
+            # SEÇÃO 4: ANÁLISE HISTÓRICA DETALHADA
             st.header("Análise Financeira Histórica e DuPont")
             tab_dre, tab_bp, tab_fcf, tab_dupont = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont"])
             with tab_dre:
@@ -312,7 +310,7 @@ if analyze_button:
                     st.caption("ROE = (Margem Líquida) x (Giro do Ativo) x (Alavancagem Financeira)")
                 else: st.warning("Não foi possível calcular a Análise DuPont.")
             
-            # --- SEÇÃO 5: ANÁLISE COMPARATIVA (COMPS) ---
+            # SEÇÃO 5: ANÁLISE COMPARATIVA (COMPS)
             st.header("Análise Comparativa de Múltiplos (Comps)")
             if peers_string:
                 if not comps_df.empty:
@@ -327,7 +325,7 @@ if analyze_button:
                 else: st.warning("Não foi possível buscar dados para a análise comparativa.")
             else: st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
             
-            # --- SEÇÃO 6: VALUATION POR DCF ---
+            # SEÇÃO 6: VALUATION POR DCF
             st.header(f"Valuation por DCF (Modelo Proprietário)")
             if dcf_data and intrinsic_value > 0:
                 st.subheader("Resultado do Valuation")
@@ -338,14 +336,16 @@ if analyze_button:
                 if dcf_upside > 20: st.success(f"RECOMENDAÇÃO (MODELO PAG): COMPRAR")
                 elif dcf_upside < -20: st.error(f"RECOMENDAÇÃO (MODELO PAG): VENDER")
                 else: st.warning(f"RECOMENDAÇÃO (MODELO PAG): MANTER")
+            else:
+                st.warning("Não foi possível calcular o DCF. Verifique a cobertura de dados para o ticker.")
 
-            # --- SEÇÃO 7: HISTÓRICO DE COTAÇÕES ---
+            # SEÇÃO 7: HISTÓRICO DE COTAÇÕES
             st.header("Histórico de Cotações")
             hist_df = yf.Ticker(ticker_symbol).history(period="5y")
             fig_price = px.line(hist_df, x=hist_df.index, y="Close", title=f"Preço de Fechamento de {info['shortName']}", labels={'Close': f'Preço ({info["currency"]})', 'Date': 'Data'})
             st.plotly_chart(fig_price, use_container_width=True)
 
-            # --- SEÇÃO 8: NOTÍCIAS RECENTES ---
+            # SEÇÃO 8: NOTÍCIAS RECENTES
             st.header("Notícias Recentes e Análise de Sentimento")
             news = yf.Ticker(ticker_symbol).news
             if news:
