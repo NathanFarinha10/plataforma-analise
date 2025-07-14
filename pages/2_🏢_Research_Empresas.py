@@ -85,6 +85,19 @@ def calculate_dupont_analysis(income_stmt, balance_sheet):
         return pd.DataFrame({'Margem Líquida (%)': net_profit_margin, 'Giro do Ativo': asset_turnover, 'Alavancagem Financeira': financial_leverage, 'ROE Calculado (%)': roe}).T.sort_index(axis=1)
     except KeyError: return pd.DataFrame()
 
+def formatar_numero(n):
+    """Formata um número para uma string legível (Milhões, Bilhões)."""
+    if pd.isna(n):
+        return "-"
+    n = float(n)
+    if abs(n) >= 1_000_000_000:
+        return f"{n / 1_000_000_000:.2f} B"
+    if abs(n) >= 1_000_000:
+        return f"{n / 1_000_000:.2f} M"
+    if abs(n) >= 1_000:
+        return f"{n / 1_000:.2f} K"
+    return f"{n:.2f}"
+
 @st.cache_data
 def calculate_financial_ratios(income_stmt, balance_sheet):
     ratios = {}
@@ -247,11 +260,44 @@ if st.session_state.analysis_run:
             income_statement = ticker_obj.income_stmt; balance_sheet = ticker_obj.balance_sheet; cash_flow = ticker_obj.cashflow
             tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Ratios Financeiros"])
             
-            with tab_dre: plot_financial_statement(income_statement[income_statement.index.isin(['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income'])], "Demonstração de Resultados Anual")
-            with tab_bp: plot_financial_statement(balance_sheet[balance_sheet.index.isin(['Total Assets', 'Total Liabilities Net Minority Interest', 'Stockholders Equity'])], "Balanço Patrimonial Anual")
+           # SUBSTITUA O CONTEÚDO DA ABA DRE
+            with tab_dre:
+                st.subheader("Evolução da Receita e Lucro")
+                dre_items_chart = ['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income']
+                plot_financial_statement(income_statement[income_statement.index.isin(dre_items_chart)], "Demonstração de Resultados Anual (Resumo)")
+                
+                with st.expander("Visualizar Demonstração de Resultados (DRE) completa"):
+                    # Prepara a tabela para exibição
+                    df_dre = income_statement.copy()
+                    df_dre.dropna(how='all', inplace=True) # Remove linhas sem nenhum dado
+                    df_dre.columns = df_dre.columns.year # Usa apenas o ano como coluna
+                    # Aplica a formatação em todas as células
+                    df_dre_formatted = df_dre.applymap(formatar_numero)
+                    st.dataframe(df_dre_formatted, use_container_width=True)
+            # SUBSTITUA O CONTEÚDO DA ABA BP
+            with tab_bp:
+                st.subheader("Evolução dos Ativos e Passivos")
+                bp_items_chart = ['Total Assets', 'Total Liabilities Net Minority Interest', 'Stockholders Equity']
+                plot_financial_statement(balance_sheet[balance_sheet.index.isin(bp_items_chart)], "Balanço Patrimonial Anual (Resumo)")
+            
+                with st.expander("Visualizar Balanço Patrimonial (BP) completo"):
+                    df_bp = balance_sheet.copy()
+                    df_bp.dropna(how='all', inplace=True)
+                    df_bp.columns = df_bp.columns.year
+                    df_bp_formatted = df_bp.applymap(formatar_numero)
+                    st.dataframe(df_bp_formatted, use_container_width=True)
+            # SUBSTITUA O CONTEÚDO DA ABA FCF
             with tab_fcf:
-                fcf_items = [item for item in ['Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'Free Cash Flow'] if item in cash_flow.index]
-                plot_financial_statement(cash_flow[cash_flow.index.isin(fcf_items)], "Fluxo de Caixa Anual")
+                st.subheader("Evolução dos Fluxos de Caixa")
+                fcf_items_chart = [item for item in ['Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'Free Cash Flow'] if item in cash_flow.index]
+                plot_financial_statement(cash_flow[cash_flow.index.isin(fcf_items_chart)], "Fluxo de Caixa Anual (Resumo)")
+            
+                with st.expander("Visualizar Fluxo de Caixa (FCF) completo"):
+                    df_fcf = cash_flow.copy()
+                    df_fcf.dropna(how='all', inplace=True)
+                    df_fcf.columns = df_fcf.columns.year
+                    df_fcf_formatted = df_fcf.applymap(formatar_numero)
+                    st.dataframe(df_fcf_formatted, use_container_width=True)
             with tab_dupont:
                 st.subheader("Decomposição do ROE (Return on Equity)")
                 dupont_df = calculate_dupont_analysis(income_statement, balance_sheet)
