@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (Versão de Depuração para Dados Financeiros)
+# pages/2_🏢_Research_Empresas.py (Versão Final com Narrativas e Correção de Lógica)
 
 import streamlit as st
 import pandas as pd
@@ -10,21 +10,31 @@ import numpy as np
 st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
 
 # --- FUNÇÕES AUXILIARES ---
-# ... (outras funções auxiliares permanecem as mesmas)
 def analisar_sentimento(texto):
     texto = texto.lower()
     palavras_positivas = ['crescimento', 'lucro', 'aumento', 'supera', 'expansão', 'forte', 'otimista', 'sucesso', 'melhora', 'compra', 'growth', 'profit', 'increase', 'beats', 'expansion', 'strong', 'optimistic', 'success', 'improves', 'buy', 'upgrade']
     palavras_negativas = ['queda', 'prejuízo', 'redução', 'abaixo', 'contração', 'fraco', 'pessimista', 'falha', 'piora', 'venda', 'fall', 'loss', 'reduction', 'below', 'contraction', 'weak', 'pessimistic', 'fails', 'worsens', 'sell', 'downgrade']
-    score = 0; [score := score + 1 for p in palavras_positivas if p in texto]; [score := score - 1 for p in palavras_negativas if p in texto]
+    score = 0
+    for p in palavras_positivas:
+        if p in texto: score += 1
+    for p in palavras_negativas:
+        if p in texto: score -= 1
     if score > 0: return 'Positivo', '🟢'
     elif score < 0: return 'Negativo', '🔴'
     else: return 'Neutro', '⚪️'
+
 @st.cache_data
 def get_key_stats(tickers):
-    key_stats = []; [key_stats.append({'Ativo': info.get('symbol'), 'Empresa': info.get('shortName'), 'P/L': info.get('trailingPE'), 'P/VP': info.get('priceToBook'), 'EV/EBITDA': info.get('enterpriseToEbitda'), 'Dividend Yield (%)': info.get('dividendYield', 0) * 100, 'ROE (%)': info.get('returnOnEquity', 0) * 100, 'Margem Bruta (%)': info.get('grossMargins', 0) * 100}) for ticker_symbol in tickers if (info := yf.Ticker(ticker_symbol).info)]
+    key_stats = []
+    for ticker_symbol in tickers:
+        try:
+            ticker = yf.Ticker(ticker_symbol)
+            info = ticker.info
+            stats = {'Ativo': info.get('symbol'), 'Empresa': info.get('shortName'), 'P/L': info.get('trailingPE'), 'P/VP': info.get('priceToBook'), 'EV/EBITDA': info.get('enterpriseToEbitda'), 'Dividend Yield (%)': info.get('dividendYield', 0) * 100, 'ROE (%)': info.get('returnOnEquity', 0) * 100, 'Margem Bruta (%)': info.get('grossMargins', 0) * 100}
+            key_stats.append(stats)
+        except Exception: continue
     return pd.DataFrame(key_stats)
 
-# --- FUNÇÃO MODIFICADA PARA DEPURAÇÃO ---
 @st.cache_data
 def get_financial_data(ticker_symbol):
     """Busca todos os dados financeiros com depuração de erros aprimorada."""
@@ -58,27 +68,33 @@ def get_financial_data(ticker_symbol):
         # Exibe o erro exato na tela
         st.error(f"Erro detalhado ao buscar dados financeiros em get_financial_data: {e}")
         return None
-
-# (Restante das funções permanece o mesmo)
+        
 def calculate_dcf(dcf_data, g, tg, wacc):
     if (wacc - tg) <= 0: return 0
-    fcf_proj = [dcf_data['fcf'] * (1 + g)**i for i in range(1, 6)]; terminal_value = (fcf_proj[-1] * (1 + tg)) / (wacc - tg)
-    pv_fcf = [fcf_proj[i] / (1 + wacc)**(i+1) for i in range(5)]; pv_terminal_value = terminal_value / (1 + wacc)**5
-    enterprise_value = sum(pv_fcf) + pv_terminal_value; equity_value = enterprise_value - dcf_data['net_debt']
+    fcf_proj = [dcf_data['fcf'] * (1 + g)**i for i in range(1, 6)]
+    terminal_value = (fcf_proj[-1] * (1 + tg)) / (wacc - tg)
+    pv_fcf = [fcf_proj[i] / (1 + wacc)**(i+1) for i in range(5)]
+    pv_terminal_value = terminal_value / (1 + wacc)**5
+    enterprise_value = sum(pv_fcf) + pv_terminal_value
+    equity_value = enterprise_value - dcf_data['net_debt']
     return equity_value / dcf_data['shares_outstanding']
+
 def plot_financial_statement(df, title):
     df_plot = df.T.sort_index(); df_plot.index = df_plot.index.year
     fig = px.bar(df_plot, barmode='group', title=title, text_auto='.2s')
     fig.update_layout(xaxis_title="Ano", yaxis_title="Valor"); st.plotly_chart(fig, use_container_width=True)
+
 @st.cache_data
 def calculate_dupont_analysis(income_stmt, balance_sheet):
     try:
         net_income = income_stmt.loc['Net Income']; revenue = income_stmt.loc['Total Revenue']
         total_assets = balance_sheet.loc['Total Assets']; equity = balance_sheet.loc['Stockholders Equity']
         net_profit_margin = (net_income / revenue) * 100; asset_turnover = revenue / total_assets
-        financial_leverage = total_assets / equity; roe = net_profit_margin * asset_turnover * financial_leverage / 100
+        financial_leverage = total_assets / equity
+        roe = net_profit_margin * asset_turnover * financial_leverage / 100
         return pd.DataFrame({'Margem Líquida (%)': net_profit_margin, 'Giro do Ativo': asset_turnover, 'Alavancagem Financeira': financial_leverage, 'ROE Calculado (%)': roe}).T.sort_index(axis=1)
     except KeyError: return pd.DataFrame()
+
 def calculate_quality_score(info, dcf_data):
     scores = {}; roe = info.get('returnOnEquity', 0) or 0
     if roe > 0.20: scores['ROE'] = 100
@@ -96,11 +112,13 @@ def calculate_quality_score(info, dcf_data):
         else: scores['Alavancagem'] = 0
     if not scores: return 0, {}
     return np.mean(list(scores.values())), scores
+
 def get_rating_from_score(score):
     if score >= 85: return "Excelente", "💎"
     elif score >= 70: return "Atrativo", "🟢"
     elif score >= 50: return "Neutro", "🟡"
     else: return "Inatrativo", "🔴"
+
 def calculate_value_score(info, comps_df, dcf_upside):
     scores = {}; pe = info.get('trailingPE')
     if pe and not comps_df.empty:
@@ -116,6 +134,7 @@ def calculate_value_score(info, comps_df, dcf_upside):
         else: scores['DCF Upside'] = 0
     if not scores: return 0, {}
     return np.mean(list(scores.values())), scores
+
 @st.cache_data
 def calculate_momentum_score(ticker_symbol):
     scores = {}; is_br = '.SA' in ticker_symbol
@@ -138,6 +157,7 @@ def calculate_momentum_score(ticker_symbol):
     except Exception: return 0, {}
     if not scores: return 0, {}
     return np.mean(list(scores.values())), scores
+
 def generate_narrative(scores, info, growth_narrative, margin_narrative):
     quality_score, value_score, momentum_score = scores['quality'], scores['value'], scores['momentum']
     if quality_score >= 85: q_phrase = "uma empresa de excelente qualidade, com fundamentos extremamente sólidos"
@@ -150,8 +170,10 @@ def generate_narrative(scores, info, growth_narrative, margin_narrative):
     if momentum_score >= 70: m_phrase = "e que atualmente desfruta de um forte momento de mercado."
     elif momentum_score >= 50: m_phrase = f"com um momento de mercado neutro."
     else: m_phrase = f"apesar de um momento de mercado desafiador."
+    
     tese = f"Nossa análise indica que **{info.get('shortName', 'a empresa')}** é {q_phrase}, {v_phrase} {m_phrase}"
     return tese
+
 @st.cache_data
 def analyze_growth(income_stmt, info):
     try:
@@ -164,9 +186,11 @@ def analyze_growth(income_stmt, info):
         narrative = f"A companhia demonstrou um crescimento de receita histórico de **{cagr:.2%} ao ano** nos últimos {num_years+1} anos, passando de {start_value/1e9:.2f}B para {end_value/1e9:.2f}B. "
         if analyst_growth_estimate is not None:
             narrative += f"A expectativa de crescimento para o próximo ano, segundo o consenso de analistas, é de **{analyst_growth_estimate:.2%}**, indicando uma potencial {'aceleração' if analyst_growth_estimate > cagr else 'desaceleração'} em relação ao ritmo histórico."
-        else: narrative += "Não há estimativas claras do consenso de analistas para o crescimento futuro da receita."
+        else:
+            narrative += "Não há estimativas claras do consenso de analistas para o crescimento futuro da receita."
         return narrative
     except Exception: return "Não foi possível gerar a análise de crescimento de receita."
+
 @st.cache_data
 def analyze_margins(income_stmt, comps_df):
     try:
@@ -183,6 +207,158 @@ def analyze_margins(income_stmt, comps_df):
         else: peers_text = "."
         return f"A margem bruta da empresa, atualmente em **{last_year_margin:.1f}%**, exibe {trend_text} e está {peers_text}"
     except Exception: return "Não foi possível gerar a análise de margens."
+
 # --- UI E LÓGICA PRINCIPAL ---
 st.title("Painel de Research de Empresas")
-# (Resto do código da UI e Lógica Principal mantido)
+st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
+st.sidebar.header("Filtros de Análise"); ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
+peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
+st.sidebar.subheader("Premissas do Modelo DCF"); growth_rate = st.sidebar.number_input("Taxa de Crescimento do FCF (anual %)", value=5.0, step=0.5, format="%.1f") / 100
+terminal_growth_rate = st.sidebar.number_input("Taxa de Perpetuidade (%)", value=2.5, step=0.1, format="%.1f") / 100
+wacc_rate = st.sidebar.number_input("Taxa de Desconto (WACC %)", value=9.0, step=0.5, format="%.1f") / 100
+analyze_button = st.sidebar.button("Analisar")
+
+if analyze_button:
+    if not ticker_symbol: st.warning("Por favor, digite um ticker principal para analisar.")
+    else:
+        with st.spinner("Buscando e processando todos os dados financeiros... Este processo pode levar um momento."):
+            financials = get_financial_data(ticker_symbol)
+            peer_tickers = [p.strip() for p in peers_string.split(",")] if peers_string else []
+            comps_df = get_key_stats(peer_tickers)
+        
+        if not financials:
+            st.error(f"Não foi possível buscar os dados financeiros para '{ticker_symbol}'. Verifique o ticker ou a cobertura da API.")
+        else:
+            info = financials['info']
+            dcf_data = financials['dcf_data']
+            income_statement = financials['income_stmt']
+            balance_sheet = financials['balance_sheet']
+            cash_flow = financials['cash_flow']
+            
+            st.header(f"Análise de {info['longName']} ({info['symbol']})")
+            
+            # --- SEÇÃO 1: RATING E NARRATIVA ---
+            st.subheader(f"Rating Proprietário (PAG Score) & Tese de Investimento")
+            dcf_upside = None
+            if dcf_data:
+                intrinsic_value = calculate_dcf(dcf_data, g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate)
+                current_price = info.get('currentPrice')
+                if current_price and intrinsic_value > 0:
+                    dcf_upside = ((intrinsic_value / current_price) - 1) * 100
+            
+            quality_score, quality_breakdown = calculate_quality_score(info, dcf_data)
+            value_score, value_breakdown = calculate_value_score(info, comps_df, dcf_upside)
+            momentum_score, momentum_breakdown = calculate_momentum_score(ticker_symbol)
+
+            quality_rating, quality_emoji = get_rating_from_score(quality_score)
+            value_rating, value_emoji = get_rating_from_score(value_score)
+            momentum_rating, momentum_emoji = get_rating_from_score(momentum_score)
+
+            col1_rat, col2_rat, col3_rat = st.columns(3)
+            with col1_rat: st.metric("Qualidade", f"{quality_rating} {quality_emoji}", f"{quality_score:.0f} / 100"); st.expander("Detalhes").write(quality_breakdown)
+            with col2_rat: st.metric("Valor (Value)", f"{value_rating} {value_emoji}", f"{value_score:.0f} / 100"); st.expander("Detalhes").write(value_breakdown)
+            with col3_rat: st.metric("Momento", f"{momentum_rating} {momentum_emoji}", f"{momentum_score:.0f} / 100"); st.expander("Detalhes").write(momentum_breakdown)
+            
+            growth_narrative = analyze_growth(income_statement, info)
+            margin_narrative = analyze_margins(income_statement, comps_df)
+            scores = {'quality': quality_score, 'value': value_score, 'momentum': momentum_score}
+            info['dcf_upside'] = dcf_upside # Adiciona para uso na narrativa final
+            tese = generate_narrative(scores, info, growth_narrative, margin_narrative)
+            st.info(f"**Tese Sumarizada:** \"{tese}\"")
+            st.divider()
+
+            # --- SEÇÃO 2: ANÁLISE NARRATIVA DETALHADA ---
+            st.header("Análise Detalhada dos Indicadores")
+            st.subheader("Crescimento de Receita")
+            st.write(growth_narrative)
+            st.divider()
+            st.subheader("Margem Bruta")
+            st.write(margin_narrative)
+            st.divider()
+
+            # --- SEÇÃO 3: CONSENSO DE MERCADO ---
+            st.subheader("Consenso de Mercado (Wall Street)")
+            recommendation = info.get('recommendationKey', 'N/A'); target_price = info.get('targetMeanPrice', 0); analyst_count = info.get('numberOfAnalystOpinions', 0)
+            col1_cons, col2_cons, col3_cons, col4_cons = st.columns(4)
+            col1_cons.metric("Recomendação Média", recommendation.upper() if recommendation != 'N/A' else 'N/A')
+            col2_cons.metric("Preço-Alvo Médio", f"{target_price:.2f}" if target_price > 0 else "N/A")
+            if target_price > 0 and current_price > 0:
+                upside_consensus = ((target_price / current_price) - 1) * 100
+                col3_cons.metric("Upside do Consenso", f"{upside_consensus:.2f}%")
+            else: col3_cons.metric("Upside do Consenso", "N/A")
+            col4_cons.metric("Nº de Analistas", f"{analyst_count}" if analyst_count > 0 else "N/A")
+            
+            # --- SEÇÃO 4: ANÁLISE HISTÓRICA DETALHADA ---
+            st.header("Análise Financeira Histórica e DuPont")
+            tab_dre, tab_bp, tab_fcf, tab_dupont = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont"])
+            with tab_dre:
+                st.subheader("Evolução da Receita e Lucro"); dre_items = ['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income']
+                dre_df = income_statement[income_statement.index.isin(dre_items)]; plot_financial_statement(dre_df, "Demonstração de Resultados Anual")
+            with tab_bp:
+                st.subheader("Evolução dos Ativos e Passivos"); bp_items = ['Total Assets', 'Total Liabilities Net Minority Interest', 'Stockholders Equity']
+                bp_df = balance_sheet[balance_sheet.index.isin(bp_items)]; plot_financial_statement(bp_df, "Balanço Patrimonial Anual")
+            with tab_fcf:
+                st.subheader("Evolução dos Fluxos de Caixa"); fcf_items = ['Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'Free Cash Flow']
+                fcf_items_available = [item for item in fcf_items if item in cash_flow.index]
+                fcf_df = cash_flow[cash_flow.index.isin(fcf_items_available)]; plot_financial_statement(fcf_df, "Fluxo de Caixa Anual")
+            with tab_dupont:
+                st.subheader("Decomposição do ROE (Return on Equity)")
+                dupont_df = calculate_dupont_analysis(income_statement, balance_sheet)
+                if not dupont_df.empty:
+                    st.dataframe(dupont_df.style.format("{:.2f}"), use_container_width=True)
+                    df_plot = dupont_df.T.sort_index(); df_plot.index = df_plot.index.year
+                    fig_dupont = px.line(df_plot, markers=True, title="Evolução dos Componentes do ROE")
+                    fig_dupont.update_layout(xaxis_title="Ano", yaxis_title="Valor / Múltiplo", legend_title="Componentes"); st.plotly_chart(fig_dupont, use_container_width=True)
+                    st.caption("ROE = (Margem Líquida) x (Giro do Ativo) x (Alavancagem Financeira)")
+                else: st.warning("Não foi possível calcular a Análise DuPont.")
+            
+            # --- SEÇÃO 5: ANÁLISE COMPARATIVA (COMPS) ---
+            st.header("Análise Comparativa de Múltiplos (Comps)")
+            if peers_string:
+                if not comps_df.empty:
+                    metric_cols = ['P/L', 'P/VP', 'EV/EBITDA', 'Dividend Yield (%)', 'ROE (%)', 'Margem Bruta (%)']
+                    for col in metric_cols: comps_df[col] = pd.to_numeric(comps_df[col], errors='coerce')
+                    formatter = {col: "{:.2f}" for col in metric_cols}
+                    st.dataframe(comps_df.set_index('Ativo').style.format(formatter, na_rep="N/A"), use_container_width=True)
+                    st.subheader("Visualização dos Múltiplos")
+                    col_chart1, col_chart2 = st.columns(2)
+                    with col_chart1: fig_pe = px.bar(comps_df, x='Ativo', y='P/L', title='Comparativo de P/L', text_auto='.2f'); st.plotly_chart(fig_pe, use_container_width=True)
+                    with col_chart2: fig_ev = px.bar(comps_df, x='Ativo', y='EV/EBITDA', title='Comparativo de EV/EBITDA', text_auto='.2f'); st.plotly_chart(fig_ev, use_container_width=True)
+                else: st.warning("Não foi possível buscar dados para a análise comparativa.")
+            else: st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
+            
+            # --- SEÇÃO 6: VALUATION POR DCF ---
+            st.header(f"Valuation por DCF (Modelo Proprietário)")
+            if dcf_data and intrinsic_value > 0:
+                st.subheader("Resultado do Valuation")
+                col1_dcf, col2_dcf, col3_dcf = st.columns(3)
+                col1_dcf.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
+                col2_dcf.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
+                col3_dcf.metric("Potencial de Upside/Downside", f"{dcf_upside:.2f}%")
+                if dcf_upside > 20: st.success(f"RECOMENDAÇÃO (MODELO PAG): COMPRAR")
+                elif dcf_upside < -20: st.error(f"RECOMENDAÇÃO (MODELO PAG): VENDER")
+                else: st.warning(f"RECOMENDAÇÃO (MODELO PAG): MANTER")
+
+            # --- SEÇÃO 7: HISTÓRICO DE COTAÇÕES ---
+            st.header("Histórico de Cotações")
+            hist_df = yf.Ticker(ticker_symbol).history(period="5y")
+            fig_price = px.line(hist_df, x=hist_df.index, y="Close", title=f"Preço de Fechamento de {info['shortName']}", labels={'Close': f'Preço ({info["currency"]})', 'Date': 'Data'})
+            st.plotly_chart(fig_price, use_container_width=True)
+
+            # --- SEÇÃO 8: NOTÍCIAS RECENTES ---
+            st.header("Notícias Recentes e Análise de Sentimento")
+            news = yf.Ticker(ticker_symbol).news
+            if news:
+                for item in news:
+                    content = item.get('content', {});
+                    if not content: continue
+                    titulo = content.get('title')
+                    if not titulo: continue
+                    provider = item.get('provider', {}); publisher = provider.get('displayName', 'Não Informado')
+                    link = item.get('canonicalUrl', {}).get('url'); sentimento, icone = analisar_sentimento(titulo)
+                    with st.expander(f"{icone} {titulo}"):
+                        st.markdown(f"**Publicado por:** {publisher}"); st.markdown(f"**Sentimento:** {sentimento}")
+                        if link: st.link_button("Ler notícia completa", link)
+            else: st.write("Nenhuma notícia recente encontrada para esta ação.")
+else:
+    st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa.")
