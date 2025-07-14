@@ -206,48 +206,6 @@ def analyze_margins(income_stmt, comps_df):
         return f"A margem bruta da empresa, atualmente em **{last_year_margin:.1f}%**, exibe {trend_text} e está {peers_text}"
     except Exception: return "Não foi possível gerar a análise de margens."
 
-# COLE ESTA NOVA FUNÇÃO JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
-
-@st.cache_data
-def calculate_financial_ratios(info, balance_sheet):
-    """Calcula um conjunto de ratios financeiros chave."""
-    try:
-        # Pega o último balanço anual disponível
-        bs = balance_sheet.iloc[:, 0]
-
-        # Ratios de Liquidez
-        current_assets = bs.get('Current Assets', 0)
-        current_liabilities = bs.get('Current Liabilities', 0)
-        inventory = bs.get('Inventory', 0)
-        
-        current_ratio = current_assets / current_liabilities if current_liabilities else 0
-        quick_ratio = (current_assets - inventory) / current_liabilities if current_liabilities else 0
-        
-        # Ratios de Endividamento
-        total_debt = bs.get('Total Debt', 0)
-        total_equity = bs.get('Stockholders Equity', 0)
-        
-        debt_to_equity = total_debt / total_equity if total_equity else 0
-
-        ratios = {
-            "Liquidez": {
-                "Current Ratio (Ativo Circ./Passivo Circ.)": current_ratio,
-                "Quick Ratio (Liquidez Seca)": quick_ratio,
-            },
-            "Endividamento": {
-                "Debt/Equity (Dívida/Patrimônio)": debt_to_equity,
-            },
-            "Rentabilidade": {
-                "ROE (Retorno sobre Patrimônio)": info.get('returnOnEquity', 0) * 100,
-                "ROA (Retorno sobre Ativos)": info.get('returnOnAssets', 0) * 100,
-                "Margem Operacional": info.get('operatingMargins', 0) * 100,
-            }
-        }
-        return ratios
-
-    except Exception:
-        return None
-
 # --- UI E LÓGICA PRINCIPAL ---
 st.title("Painel de Research de Empresas")
 st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
@@ -265,11 +223,6 @@ if analyze_button:
             financials = get_financial_data(ticker_symbol)
             peer_tickers = [p.strip() for p in peers_string.split(",")] if peers_string else []
             comps_df = get_key_stats(peer_tickers)
-
-             if financials:
-                ratios = calculate_financial_ratios(financials['info'], financials['balance_sheet'])
-            else:
-                ratios = None
         
         if not financials:
             st.error(f"Não foi possível buscar os dados financeiros para '{ticker_symbol}'. Verifique o ticker ou a cobertura da API.")
@@ -319,30 +272,6 @@ if analyze_button:
             st.divider()
             st.subheader("Margem Bruta")
             st.write(margin_narrative)
-            # COLE ESTE BLOCO ANTES DO PRÓXIMO st.divider()
-
-            # --- NOVA SEÇÃO: ANÁLISE DE RATIOS FINANCEIROS ---
-            st.subheader("Análise de Ratios Financeiros")
-            
-            if ratios:
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.markdown("**Liquidez**")
-                    for name, value in ratios["Liquidez"].items():
-                        st.metric(label=name, value=f"{value:.2f}")
-                        
-                with col2:
-                    st.markdown("**Endividamento**")
-                    for name, value in ratios["Endividamento"].items():
-                        st.metric(label=name, value=f"{value:.2f}")
-            
-                with col3:
-                    st.markdown("**Rentabilidade**")
-                    for name, value in ratios["Rentabilidade"].items():
-                        st.metric(label=name, value=f"{value:.2f}%")
-            else:
-                st.warning("Não foi possível calcular os ratios financeiros.")
             st.divider()
 
             # SEÇÃO 3: CONSENSO DE MERCADO
