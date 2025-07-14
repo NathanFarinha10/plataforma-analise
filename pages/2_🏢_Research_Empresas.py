@@ -95,6 +95,51 @@ def calculate_dupont_analysis(income_stmt, balance_sheet):
         return pd.DataFrame({'Margem Líquida (%)': net_profit_margin, 'Giro do Ativo': asset_turnover, 'Alavancagem Financeira': financial_leverage, 'ROE Calculado (%)': roe}).T.sort_index(axis=1)
     except KeyError: return pd.DataFrame()
 
+@st.cache_data
+def calculate_financial_ratios(income_stmt, balance_sheet):
+    """
+    Calcula uma série de ratios financeiros com base nos demonstrativos.
+    Retorna um DataFrame com os ratios calculados por ano.
+    """
+    ratios = {}
+    try:
+        # --- Ratios de Rentabilidade ---
+        ratios['Margem Bruta (%)'] = (income_stmt.loc['Gross Profit'] / income_stmt.loc['Total Revenue']) * 100
+        ratios['Margem Operacional (%)'] = (income_stmt.loc['Operating Income'] / income_stmt.loc['Total Revenue']) * 100
+        ratios['Margem Líquida (%)'] = (income_stmt.loc['Net Income'] / income_stmt.loc['Total Revenue']) * 100
+        ratios['ROE (Return on Equity) (%)'] = (income_stmt.loc['Net Income'] / balance_sheet.loc['Stockholders Equity']) * 100
+        ratios['ROA (Return on Assets) (%)'] = (income_stmt.loc['Net Income'] / balance_sheet.loc['Total Assets']) * 100
+        # ROIC (Return on Invested Capital) - um pouco mais complexo de calcular
+        # NOPAT = EBIT * (1 - Tax Rate) -> Usaremos Operating Income como proxy de EBIT
+        # Invested Capital = Total Assets - Total Current Liabilities
+        tax_rate = income_stmt.loc['Tax Provision'] / income_stmt.loc['Pretax Income']
+        nopat = income_stmt.loc['Operating Income'] * (1 - tax_rate)
+        invested_capital = balance_sheet.loc['Total Assets'] - balance_sheet.loc['Total Current Liabilities']
+        ratios['ROIC (Return on Invested Capital) (%)'] = (nopat / invested_capital) * 100
+
+        # --- Ratios de Liquidez ---
+        ratios['Liquidez Corrente'] = balance_sheet.loc['Total Current Assets'] / balance_sheet.loc['Total Current Liabilities']
+        # Liquidez Imediata (Quick Ratio) = (Current Assets - Inventory) / Current Liabilities
+        quick_assets = balance_sheet.loc['Total Current Assets'] - balance_sheet.loc['Inventory']
+        ratios['Liquidez Imediata'] = quick_assets / balance_sheet.loc['Total Current Liabilities']
+        
+        # --- Ratios de Endividamento ---
+        ratios['Dívida Bruta / Patrimônio Líquido'] = balance_sheet.loc['Total Debt'] / balance_sheet.loc['Stockholders Equity']
+        # Dívida Líquida / EBITDA - Usaremos o EBITDA do info, pois é mais direto
+        # O cálculo histórico ano a ano do EBITDA pode ser complexo e propenso a falhas
+        
+        # --- Ratios de Eficiência ---
+        ratios['Giro do Ativo'] = income_stmt.loc['Total Revenue'] / balance_sheet.loc['Total Assets']
+        
+    except KeyError as e:
+        # Informa no console sobre o dado ausente, mas não para a execução
+        print(f"Aviso: Não foi possível calcular todos os ratios. Dado ausente: {e}")
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado no cálculo de ratios: {e}")
+
+    # Retorna um DataFrame transposto para fácil visualização (anos nas colunas)
+    return pd.DataFrame(ratios).sort_index(axis=1)
+
 def calculate_quality_score(info, dcf_data):
     scores = {}; roe = info.get('returnOnEquity', 0) or 0
     if roe > 0.20: scores['ROE'] = 100
@@ -288,7 +333,7 @@ if analyze_button:
             
             # SEÇÃO 4: ANÁLISE HISTÓRICA DETALHADA
             st.header("Análise Financeira Histórica e DuPont")
-            tab_dre, tab_bp, tab_fcf, tab_dupont = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont"])
+            tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Análise de Ratios"])
             with tab_dre:
                 st.subheader("Evolução da Receita e Lucro"); dre_items = ['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income']
                 dre_df = income_statement[income_statement.index.isin(dre_items)]; plot_financial_statement(dre_df, "Demonstração de Resultados Anual")
@@ -309,6 +354,37 @@ if analyze_button:
                     fig_dupont.update_layout(xaxis_title="Ano", yaxis_title="Valor / Múltiplo", legend_title="Componentes"); st.plotly_chart(fig_dupont, use_container_width=True)
                     st.caption("ROE = (Margem Líquida) x (Giro do Ativo) x (Alavancagem Financeira)")
                 else: st.warning("Não foi possível calcular a Análise DuPont.")
+            with tab_ratios:
+                st.subheader("Diagnóstico por Indicadores Financeiros (Ratios)")
+                ratios_df = calculate_financial_ratios(income_statement, balance_sheet)
+
+                if not ratios_df.empty:
+                    st.dataframe(ratios_df.style.format("{:.2f}"), use_container_width=True)
+                    st.markdown("---")
+                    st.subheader("Visualização Histórica dos Ratios")
+
+                    # Gráficos de Rentabilidade
+                    st.markdown("#### Rentabilidade")
+                    profitability_ratios = ['Margem Bruta (%)', 'Margem Operacional (%)', 'Margem Líquida (%)', 'ROE (Return on Equity) (%)', 'ROA (Return on Assets) (%)', 'ROIC (Return on Invested Capital) (%)']
+                    profitability_df = ratios_df[ratios_df.index.isin(profitability_ratios)].T.sort_index()
+                    if not profitability_df.empty:
+                        fig_profit = px.line(profitability_df, markers=True, title="Evolução dos Ratios de Rentabilidade")
+                        fig_profit.update_layout(yaxis_title="Percentual (%)", xaxis_title="Ano", legend_title="Métrica")
+                        st.plotly_chart(fig_profit, use_container_width=True)
+                        st.caption("Mede a capacidade da empresa de gerar lucros a partir de suas vendas e ativos. Tendências crescentes são positivas.")
+                    
+                    # Gráficos de Liquidez e Endividamento
+                    st.markdown("#### Liquidez e Endividamento")
+                    leverage_liquidity_ratios = ['Liquidez Corrente', 'Liquidez Imediata', 'Dívida Bruta / Patrimônio Líquido']
+                    leverage_df = ratios_df[ratios_df.index.isin(leverage_liquidity_ratios)].T.sort_index()
+                    if not leverage_df.empty:
+                        fig_leverage = px.line(leverage_df, markers=True, title="Evolução dos Ratios de Liquidez e Endividamento")
+                        fig_leverage.update_layout(yaxis_title="Índice", xaxis_title="Ano", legend_title="Métrica")
+                        st.plotly_chart(fig_leverage, use_container_width=True)
+                        st.caption("Liquidez Corrente > 1.5 e Dívida/PL controlada (dependendo do setor) são geralmente sinais de saúde financeira.")
+
+                else:
+                    st.warning("Não foi possível calcular a Análise de Ratios devido a dados financeiros incompletos.")
             
             # SEÇÃO 5: ANÁLISE COMPARATIVA (COMPS)
             st.header("Análise Comparativa de Múltiplos (Comps)")
