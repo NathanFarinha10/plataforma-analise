@@ -183,6 +183,44 @@ def analyze_growth(income_stmt, info):
     except Exception:
         return "Não foi possível gerar a análise de crescimento de receita. Dados históricos podem estar incompletos."
 
+@st.cache_data
+def analyze_margins(income_stmt, info, comps_df):
+    """Gera uma análise narrativa sobre as margens da empresa."""
+    try:
+        # Pega a série histórica de margens
+        gross_margin_series = (income_stmt.loc['Gross Profit'] / income_stmt.loc['Total Revenue']) * 100
+        
+        # Análise da Tendência
+        first_year_margin = gross_margin_series.iloc[0]
+        last_year_margin = gross_margin_series.iloc[-1]
+        trend = last_year_margin - first_year_margin
+        
+        if trend > 2: # Melhoria de mais de 2 pontos percentuais
+            trend_text = "uma clara tendência de expansão, "
+        elif trend < -2:
+            trend_text = "uma preocupante tendência de contração, "
+        else:
+            trend_text = "uma tendência de estabilidade, "
+            
+        # Comparação com Pares
+        peers_margin = comps_df['Margem Bruta (%)'].median()
+        if peers_margin > 0:
+            if last_year_margin > peers_margin * 1.1: # 10% acima da mediana
+                peers_text = f"e opera com margens significativamente superiores à mediana de seus pares ({peers_margin:.1f}%)."
+            elif last_year_margin < peers_margin * 0.9: # 10% abaixo da mediana
+                peers_text = f"porém opera com margens abaixo da mediana de seus pares ({peers_margin:.1f}%)."
+            else:
+                peers_text = f"e opera com margens em linha com a mediana de seus pares ({peers_margin:.1f}%)."
+        else:
+            peers_text = "."
+
+        # Constrói a narrativa final
+        narrative = f"A margem bruta da empresa, atualmente em **{last_year_margin:.1f}%**, exibe {trend_text} {peers_text}"
+        
+        return narrative
+    except Exception:
+        return "Não foi possível gerar a análise de margens. Dados históricos podem estar incompletos."
+
 def calculate_value_score(info, comps_df, dcf_upside):
     scores = {}
     pe = info.get('trailingPE')
@@ -328,7 +366,16 @@ if analyze_button:
                 st.write(growth_narrative)
             
             st.divider()
-
+            
+            # --- CAPÍTULO: MARGEM BRUTA ---
+            st.subheader("Margem Bruta")
+            with st.spinner("Analisando tendências de margem..."):
+                # Reutiliza os dados já buscados
+                margin_narrative = analyze_margins(income_statement, info, comps_df)
+                st.write(margin_narrative)
+            
+            st.divider()
+            
             st.header("Análise Financeira Histórica e DuPont")
             ticker_obj = yf.Ticker(ticker_symbol)
             income_statement = ticker_obj.income_stmt
