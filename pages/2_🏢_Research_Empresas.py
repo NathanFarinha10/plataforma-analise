@@ -6,10 +6,7 @@ import yfinance as yf
 import plotly.express as px
 import numpy as np
 
-# --- Configuração da Página ---
-st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
-
-# ADICIONE ESTAS LISTAS DE ORDENAÇÃO NO SEU SCRIPT
+# COLE ESTE BLOCO NO TOPO DO SEU SCRIPT, APÓS OS IMPORTS
 
 DRE_ORDER = [
     'Total Revenue', 'Cost Of Revenue', 'Gross Profit', 'Operating Expense',
@@ -42,6 +39,9 @@ FCF_ORDER = [
     'Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'End Cash Position',
     'Changes In Cash', 'Capital Expenditure', 'Free Cash Flow'
 ]
+
+# --- Configuração da Página ---
+st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
 
 # --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
 # Essencial para a página não "resetar" após cliques em botões internos
