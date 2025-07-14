@@ -213,6 +213,63 @@ def calculate_momentum_score(ticker_symbol):
     if not scores: return 0, {}
     return np.mean(list(scores.values())), scores
 
+# ADICIONE ESTA NOVA FUNÇÃO AUXILIAR AO SEU SCRIPT
+
+def calculate_credit_metrics(income_stmt, balance_sheet, cash_flow, info):
+    """
+    Calcula métricas de crédito, alavancagem, cobertura e um score de crédito proprietário.
+    """
+    metrics = {}
+    scores = {}
+
+    try:
+        # --- Coleta de Dados Base ---
+        ebit = income_stmt.loc['Operating Income']
+        interest_expense = income_stmt.loc['Interest Expense Non Operating'].abs()
+        net_debt = get_dcf_data_from_yf(info['symbol'])['net_debt']
+        ebitda = info.get('ebitda', ebit) # Usa o EBITDA do 'info' se disponível, senão aproxima por EBIT
+        total_debt = balance_sheet.loc['Total Debt']
+        equity = balance_sheet.loc['Stockholders Equity']
+        total_assets = balance_sheet.loc['Total Assets']
+        cfo = cash_flow.loc['Operating Cash Flow']
+        current_debt = balance_sheet.get('Current Debt And Capital Lease Obligation', pd.Series(0, index=balance_sheet.columns))
+        long_term_debt = balance_sheet.get('Long Term Debt And Capital Lease Obligation', pd.Series(0, index=balance_sheet.columns))
+
+        # --- Cálculo das Métricas ---
+        metrics['Dívida Líquida / EBITDA'] = net_debt / ebitda
+        metrics['Dívida Total / PL'] = total_debt / equity
+        metrics['Dívida Total / Ativos'] = total_debt / total_assets
+        metrics['FCO / Dívida Total'] = cfo / total_debt
+        # Evitar divisão por zero na cobertura de juros
+        metrics['EBIT / Juros'] = ebit / interest_expense.replace(0, np.nan)
+        metrics['Dívida Curto Prazo'] = current_debt
+        metrics['Dívida Longo Prazo'] = long_term_debt
+
+        # --- Lógica do Score de Crédito (0-100) ---
+        # Score para Dívida Líquida / EBITDA (quanto menor, melhor)
+        last_debt_ebitda = metrics['Dívida Líquida / EBITDA'].iloc[-1]
+        if last_debt_ebitda < 1.5: scores['Alavancagem'] = 100
+        elif last_debt_ebitda < 3: scores['Alavancagem'] = 75
+        elif last_debt_ebitda < 5: scores['Alavancagem'] = 40
+        else: scores['Alavancagem'] = 10
+
+        # Score para Cobertura de Juros (quanto maior, melhor)
+        last_coverage = metrics['EBIT / Juros'].iloc[-1]
+        if pd.isna(last_coverage) or last_coverage < 1.5: scores['Cobertura'] = 10
+        elif last_coverage < 4: scores['Cobertura'] = 50
+        elif last_coverage < 7: scores['Cobertura'] = 80
+        else: scores['Cobertura'] = 100
+        
+        # Métrica final
+        final_score = np.mean(list(scores.values()))
+        metrics['PAG Credit Score'] = final_score
+        
+        return metrics
+
+    except (KeyError, IndexError, TypeError):
+        # Retorna dicionário vazio se qualquer dado essencial estiver faltando
+        return {}
+
 # --- UI E LÓGICA PRINCIPAL ---
 st.title("Painel de Research de Empresas")
 st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
@@ -280,7 +337,7 @@ if st.session_state.analysis_run:
             st.header("Análise Financeira Histórica")
             ticker_obj = yf.Ticker(ticker_symbol)
             income_statement = ticker_obj.income_stmt; balance_sheet = ticker_obj.balance_sheet; cash_flow = ticker_obj.cashflow
-            tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Ratios Financeiros"])
+            tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios, tab_debt = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Ratios", "🩺 Análise de Dívida"])
             
             with tab_dre:
                 st.subheader("Evolução da Receita e Lucro")
@@ -342,6 +399,64 @@ if st.session_state.analysis_run:
                     if 'Giro do Ativo' in df_plot_ratios.columns:
                         with col2_r: st.metric("Giro do Ativo (x)", f"{df_plot_ratios['Giro do Ativo'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Giro do Ativo', title='Evolução do Giro do Ativo', markers=True), use_container_width=True)
                 else: st.warning("Dados insuficientes para calcular os ratios financeiros.")
+
+            # ADICIONE ESTE BLOCO DE CÓDIGO NO FINAL DA SEQUÊNCIA DE ABAS
+
+            with tab_debt:
+                st.subheader("Análise de Dívida e Saúde de Crédito")
+                
+                # Chama a nova função para calcular tudo
+                credit_data = calculate_credit_metrics(income_statement, balance_sheet, cash_flow, info)
+            
+                if not credit_data:
+                    st.warning("Não foi possível calcular as métricas de crédito devido à falta de dados financeiros.")
+                else:
+                    # --- 1. Rating de Crédito Proprietário ---
+                    credit_score = credit_data['PAG Credit Score']
+                    if credit_score >= 85: rating, emoji = "Baixo Risco", "🛡️"
+                    elif credit_score >= 60: rating, emoji = "Risco Moderado", "⚠️"
+                    else: rating, emoji = "Alto Risco", "🚨"
+                    
+                    st.metric("PAG Credit Score", f"{rating} {emoji}", f"{credit_score:.0f} / 100")
+                    st.progress(int(credit_score))
+                    st.divider()
+            
+                    # --- 2. Métricas de Alavancagem e Cobertura ---
+                    st.subheader("Métricas Chave de Crédito")
+                    col1, col2 = st.columns(2)
+                    
+                    # Extrai os dataframes para plotagem
+                    df_plot_debt = pd.DataFrame({
+                        k: v for k, v in credit_data.items() 
+                        if isinstance(v, pd.Series) and k not in ['Dívida Curto Prazo', 'Dívida Longo Prazo']
+                    }).T
+                    df_plot_debt.columns = df_plot_debt.columns.year
+                    
+                    with col1:
+                        st.metric("Dívida Líquida / EBITDA", f"{credit_data['Dívida Líquida / EBITDA'].iloc[-1]:.2f}x")
+                        st.metric("EBIT / Desp. Juros", f"{credit_data['EBIT / Juros'].iloc[-1]:.2f}x")
+                    with col2:
+                        st.metric("Dívida Total / PL", f"{credit_data['Dívida Total / PL'].iloc[-1]:.2f}x")
+                        st.metric("FCO / Dívida Total", f"{credit_data['FCO / Dívida Total'].iloc[-1]*100:.1f}%")
+            
+                    fig_debt_ratios = px.bar(df_plot_debt.T, facet_col="variable", facet_col_wrap=2, 
+                                             title="Evolução Histórica dos Ratios de Crédito")
+                    fig_debt_ratios.update_yaxes(matches=None) # Permite eixos Y independentes
+                    st.plotly_chart(fig_debt_ratios, use_container_width=True)
+                    st.divider()
+
+        # --- 3. Estrutura da Dívida ---
+        st.subheader("Estrutura da Dívida (Curto vs. Longo Prazo)")
+        df_debt_structure = pd.DataFrame({
+            'Dívida de Curto Prazo': credit_data['Dívida Curto Prazo'],
+            'Dívida de Longo Prazo': credit_data['Dívida Longo Prazo']
+        })
+        df_debt_structure.index = df_debt_structure.index.year
+        
+        fig_debt_structure = px.bar(df_debt_structure, title="Composição da Dívida Total",
+                                    labels={'value': 'Valor', 'index': 'Ano'},
+                                    text_auto='.2s')
+        st.plotly_chart(fig_debt_structure, use_container_width=True)
             
             st.header("Análise Comparativa de Múltiplos (Comps)")
             if peers_string:
