@@ -311,9 +311,23 @@ if st.session_state.analysis_run:
                         else: st.error("Não foi possível calcular. Verifique se WACC > Perpetuidade e se há Preço Atual.")
                     else: st.error("Dados financeiros não carregados. Impossível rodar o DCF.")
 
+            # SUBSTITUA A SEÇÃO DE HISTÓRICO DE COTAÇÕES POR ESTE BLOCO
+
             st.header("Histórico de Cotações")
-            hist_df = yf.Ticker(ticker_symbol).history(period="5y")
-            st.plotly_chart(px.line(hist_df, y="Close", title=f"Preço de Fechamento de {info['shortName']}"), use_container_width=True)
+            try:
+                hist_df = yf.Ticker(ticker_symbol).history(period="5y")
+                
+                # Verifica se o dataframe retornado está vazio
+                if hist_df.empty:
+                    st.warning(f"Não foi possível obter o histórico de cotações para o ticker {ticker_symbol}.")
+                else:
+                    # Se os dados foram obtidos, plota o gráfico
+                    fig_price = px.line(hist_df, y="Close", title=f"Preço de Fechamento de {info['shortName']}")
+                    st.plotly_chart(fig_price, use_container_width=True)
+            
+            except Exception as e:
+                # Se ocorrer qualquer outro erro na chamada do yfinance, exibe uma mensagem
+                st.error(f"Ocorreu um erro ao buscar o histórico de cotações: {e}")
 
             # SUBSTITUA A SEÇÃO DE NOTÍCIAS INTEIRA POR ESTE BLOCO
 
