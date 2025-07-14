@@ -213,9 +213,6 @@ st.markdown("Analise ações individuais, compare com pares e calcule o valor in
 
 st.sidebar.header("Filtros de Análise"); ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
 peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
-st.sidebar.subheader("Premissas do Modelo DCF"); growth_rate = st.sidebar.number_input("Taxa de Crescimento do FCF (anual %)", value=5.0, step=0.5, format="%.1f") / 100
-terminal_growth_rate = st.sidebar.number_input("Taxa de Perpetuidade (%)", value=2.5, step=0.1, format="%.1f") / 100
-wacc_rate = st.sidebar.number_input("Taxa de Desconto (WACC %)", value=9.0, step=0.5, format="%.1f") / 100
 
 analyze_button = st.sidebar.button("Analisar")
 
@@ -236,11 +233,6 @@ if analyze_button:
 
             st.subheader(f"Rating Proprietário (PAG Score)")
             dcf_upside = None
-            if dcf_data:
-                intrinsic_value = calculate_dcf(fcf=dcf_data['fcf'], net_debt=dcf_data['net_debt'], shares_outstanding=dcf_data['shares_outstanding'], g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate)
-                current_price = info.get('currentPrice')
-                if current_price and intrinsic_value > 0:
-                    dcf_upside = ((intrinsic_value / current_price) - 1) * 100
             
             quality_score, quality_breakdown = calculate_quality_score(info, dcf_data)
             quality_rating, quality_emoji = get_rating_from_score(quality_score)
@@ -367,17 +359,64 @@ if analyze_button:
                     with col_chart2: fig_ev = px.bar(comps_df, x='Ativo', y='EV/EBITDA', title='Comparativo de EV/EBITDA', text_auto='.2f'); st.plotly_chart(fig_ev, use_container_width=True)
                 else: st.warning("Não foi possível buscar dados para a análise comparativa.")
             else: st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
+
+            # COLE ESTE NOVO BLOCO DE CÓDIGO AQUI
+
+            st.header("💰 Valuation por DCF (Modelo Proprietário)")
+            with st.expander("Clique aqui para realizar a análise de DCF", expanded=False):
+                st.info("Insira as premissas do modelo e clique em 'Calcular' para ver o resultado do valuation.")
+                
+                # Inputs do DCF dentro da nova seção
+                col1_inputs, col2_inputs, col3_inputs = st.columns(3)
+                with col1_inputs:
+                    g_dcf = st.number_input("Taxa de Crescimento do FCF (anual %)", value=5.0, step=0.5, format="%.1f", key="dcf_g") / 100
+                with col2_inputs:
+                    tg_dcf = st.number_input("Taxa de Perpetuidade (%)", value=2.5, step=0.1, format="%.1f", key="dcf_tg") / 100
+                with col3_inputs:
+                    wacc_dcf = st.number_input("Taxa de Desconto (WACC %)", value=9.0, step=0.5, format="%.1f", key="dcf_wacc") / 100
             
-            st.header(f"Valuation por DCF (Modelo Proprietário)")
-            if dcf_data and intrinsic_value > 0:
-                st.subheader("Resultado do Valuation")
-                col1_dcf, col2_dcf, col3_dcf = st.columns(3)
-                col1_dcf.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
-                col2_dcf.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
-                col3_dcf.metric("Potencial de Upside/Downside", f"{dcf_upside:.2f}%")
-                if dcf_upside > 20: st.success(f"RECOMENDAÇÃO (MODELO PAG): COMPRAR")
-                elif dcf_upside < -20: st.error(f"RECOMENDAÇÃO (MODELO PAG): VENDER")
-                else: st.warning(f"RECOMENDAÇÃO (MODELO PAG): MANTER")
+                # Botão para rodar o cálculo sob demanda
+                run_dcf_button = st.button("Calcular Preço Justo")
+            
+                if run_dcf_button:
+                    # Verifica se os dados necessários da empresa foram carregados
+                    if dcf_data:
+                        # Roda o cálculo do DCF com os valores inseridos na nova seção
+                        intrinsic_value = calculate_dcf(
+                            fcf=dcf_data['fcf'],
+                            net_debt=dcf_data['net_debt'],
+                            shares_outstanding=dcf_data['shares_outstanding'],
+                            g=g_dcf,
+                            tg=tg_dcf,
+                            wacc=wacc_dcf
+                        )
+            
+                        if intrinsic_value > 0:
+                            st.subheader("Resultado do Valuation")
+                            current_price = info.get('currentPrice')
+                            if current_price:
+                                dcf_upside = ((intrinsic_value / current_price) - 1) * 100
+                                
+                                # Exibe os resultados
+                                col1_dcf, col2_dcf, col3_dcf = st.columns(3)
+                                col1_dcf.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
+                                col2_dcf.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
+                                col3_dcf.metric("Potencial de Upside/Downside", f"{dcf_upside:.2f}%",
+                                                delta_color=("inverse" if dcf_upside < 0 else "normal"))
+            
+                                # Lógica da recomendação
+                                if dcf_upside > 20:
+                                    st.success("RECOMENDAÇÃO (MODELO PAG): COMPRAR")
+                                elif dcf_upside < -20:
+                                    st.error("RECOMENDAÇÃO (MODELO PAG): VENDER")
+                                else:
+                                    st.warning("RECOMENDAÇÃO (MODELO PAG): MANTER")
+                            else:
+                                st.warning("Preço atual da ação não disponível para calcular o upside.")
+                        else:
+                            st.error("Não foi possível calcular o valor. Verifique se a taxa de WACC é maior que a taxa de perpetuidade.")
+                    else:
+                        st.error("Dados financeiros da empresa (FCF, Dívida) não puderam ser carregados. Não é possível rodar o DCF.")
 
             st.header("Histórico de Cotações")
             hist_df = yf.Ticker(ticker_symbol).history(period="5y")
