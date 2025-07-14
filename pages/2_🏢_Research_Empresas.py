@@ -9,6 +9,40 @@ import numpy as np
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
 
+# ADICIONE ESTAS LISTAS DE ORDENAÇÃO NO SEU SCRIPT
+
+DRE_ORDER = [
+    'Total Revenue', 'Cost Of Revenue', 'Gross Profit', 'Operating Expense',
+    'Selling General And Administration', 'Research And Development', 'Operating Income',
+    'Interest Income Non Operating', 'Interest Expense Non Operating', 'Other Income Expense Non Operating',
+    'Pretax Income', 'Tax Provision', 'Net Income Common Stockholders', 'Net Income',
+    'Basic EPS', 'Diluted EPS', 'EBITDA'
+]
+
+BP_ORDER = [
+    # Ativos Circulantes
+    'Cash And Cash Equivalents', 'Receivables', 'Inventory', 'Other Current Assets', 'Total Current Assets',
+    # Ativos Não Circulantes
+    'Net PPE', 'Goodwill And Other Intangible Assets', 'Other Non Current Assets', 'Total Non Current Assets',
+    # Total de Ativos
+    'Total Assets',
+    # Passivos Circulantes
+    'Payables And Accrued Expenses', 'Current Debt And Capital Lease Obligation', 'Other Current Liabilities', 'Total Current Liabilities',
+    # Passivos Não Circulantes
+    'Long Term Debt And Capital Lease Obligation', 'Other Non Current Liabilities', 'Total Non Current Liabilities',
+    # Total de Passivos
+    'Total Liabilities Net Minority Interest',
+    # Patrimônio Líquido
+    'Stockholders Equity', 'Total Equity Gross Minority Interest',
+    # Total Passivo + PL
+    'Total Liabilities And Equity'
+]
+
+FCF_ORDER = [
+    'Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'End Cash Position',
+    'Changes In Cash', 'Capital Expenditure', 'Free Cash Flow'
+]
+
 # --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
 # Essencial para a página não "resetar" após cliques em botões internos
 if 'analysis_run' not in st.session_state:
@@ -31,6 +65,14 @@ def analisar_sentimento(texto):
     if score > 0: return 'Positivo', '🟢'
     elif score < 0: return 'Negativo', '🔴'
     else: return 'Neutro', '⚪️'
+
+def reorder_financial_statement(df, order_list):
+    """Reordena as linhas de um dataframe financeiro de acordo com uma lista padrão."""
+    existing_rows = df.index.tolist()
+    ordered_rows = [row for row in order_list if row in existing_rows]
+    extra_rows = [row for row in existing_rows if row not in ordered_rows]
+    final_order = ordered_rows + extra_rows
+    return df.reindex(final_order)
 
 @st.cache_data
 def get_key_stats(tickers):
@@ -269,6 +311,8 @@ if st.session_state.analysis_run:
                 with st.expander("Visualizar Demonstração de Resultados (DRE) completa"):
                     # Prepara a tabela para exibição
                     df_dre = income_statement.copy()
+                    df_bp = reorder_financial_statement(df_bp, BP_ORDER)
+                    df_dre = reorder_financial_statement(df_dre, DRE_ORDER)
                     df_dre.dropna(how='all', inplace=True) # Remove linhas sem nenhum dado
                     df_dre.columns = df_dre.columns.year # Usa apenas o ano como coluna
                     # Aplica a formatação em todas as células
@@ -294,6 +338,7 @@ if st.session_state.analysis_run:
             
                 with st.expander("Visualizar Fluxo de Caixa (FCF) completo"):
                     df_fcf = cash_flow.copy()
+                    df_fcf = reorder_financial_statement(df_fcf, FCF_ORDER)
                     df_fcf.dropna(how='all', inplace=True)
                     df_fcf.columns = df_fcf.columns.year
                     df_fcf_formatted = df_fcf.applymap(formatar_numero)
