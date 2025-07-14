@@ -5,6 +5,8 @@ import pandas as pd
 import yfinance as yf
 import plotly.express as px
 import numpy as np
+import numpy_financial as npf
+from datetime import date
 
 # --- CONFIGURAÇÕES E CONSTANTES ---
 st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
@@ -283,6 +285,39 @@ def calculate_momentum_score(ticker_symbol):
     if not scores: return 0, {}
     return np.mean(list(scores.values())), scores
 
+def calculate_ytm(price, face_value, coupon_rate, years_to_maturity, freq):
+    """Calcula o Yield to Maturity (YTM) de um título."""
+    try:
+        periods = years_to_maturity * freq
+        coupon_payment = (coupon_rate / freq) * face_value
+        cash_flows = [-coupon_payment] * int(periods)
+        cash_flows[-1] -= face_value
+        cash_flows = np.insert(cash_flows, 0, price)
+        ytm_period = npf.irr(cash_flows)
+        return ytm_period * freq
+    except (ValueError, TypeError):
+        return None
+
+def calculate_macaulay_duration(price, face_value, coupon_rate, ytm, years_to_maturity, freq):
+    """Calcula a Macaulay Duration de um título."""
+    if ytm is None:
+        return None
+    periods = int(years_to_maturity * freq)
+    coupon_payment = (coupon_rate / freq) * face_value
+    ytm_period = ytm / freq
+    pv_cash_flows = []
+    for t in range(1, periods + 1):
+        cf = coupon_payment
+        if t == periods:
+            cf += face_value
+        pv_cf = cf / ((1 + ytm_period) ** t)
+        pv_cash_flows.append(pv_cf)
+    duration = 0
+    for t in range(len(pv_cash_flows)):
+        weight = pv_cash_flows[t] / price
+        duration += weight * (t + 1)
+    return duration / freq
+
 # --- UI E LÓGICA PRINCIPAL ---
 st.title("Painel de Research de Empresas")
 st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
@@ -350,7 +385,7 @@ if st.session_state.analysis_run:
             st.header("Análise Financeira Histórica")
             ticker_obj = yf.Ticker(ticker_symbol)
             income_statement = ticker_obj.income_stmt; balance_sheet = ticker_obj.balance_sheet; cash_flow = ticker_obj.cashflow
-            tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios, tab_debt = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Ratios", "🩺 Análise de Dívida"])
+            tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios, tab_debt, tab_bond_calc = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Ratios", "🩺 Análise de Dívida", "📜 Calculadora de Títulos"])
             
             with tab_dre:
                 st.subheader("Evolução da Receita e Lucro")
@@ -450,17 +485,85 @@ if st.session_state.analysis_run:
                     fig_debt_structure = px.bar(df_debt_structure, title="Composição da Dívida Total", labels={'value': 'Valor', 'index': 'Ano'}, text_auto='.2s')
                     st.plotly_chart(fig_debt_structure, use_container_width=True)
 
-            st.header("Análise Comparativa de Múltiplos (Comps)")
-            if peers_string:
-                if not comps_df.empty:
-                    metric_cols = ['P/L', 'P/VP', 'EV/EBITDA', 'Dividend Yield (%)', 'ROE (%)', 'Margem Bruta (%)']
-                    comps_df[metric_cols] = comps_df[metric_cols].apply(pd.to_numeric, errors='coerce')
-                    st.dataframe(comps_df.set_index('Ativo').style.format("{:.2f}", subset=metric_cols, na_rep="N/A"), use_container_width=True)
-                    col_chart1, col_chart2 = st.columns(2)
-                    with col_chart1: st.plotly_chart(px.bar(comps_df, x='Ativo', y='P/L', title='Comparativo de P/L', text_auto='.2f'), use_container_width=True)
-                    with col_chart2: st.plotly_chart(px.bar(comps_df, x='Ativo', y='EV/EBITDA', title='Comparativo de EV/EBITDA', text_auto='.2f'), use_container_width=True)
-                else: st.warning("Não foi possível buscar dados para a análise comparativa.")
-            else: st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
+            # ADICIONE ESTE BLOCO DE CÓDIGO NO FINAL DA SEQUÊNCIA DE ABAS
+
+            with tab_bond_calc:
+                st.subheader("Calculadora e Analisador de Títulos de Dívida")
+                st.markdown("Insira as informações de um título de dívida (bond/debênture) para calcular suas métricas de risco e retorno.")
+                st.info("Esta ferramenta é uma **calculadora**. Os dados do título devem ser inseridos manualmente.")
+            
+                st.divider()
+            
+                # --- Painel de Inputs ---
+                st.markdown("##### Parâmetros do Título")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    price_pct = st.number_input("Preço Atual (% do Valor de Face)", min_value=1.0, value=98.5, step=0.1, format="%.2f", help="Preço 'limpo' do título. Ex: 98.5 significa que o título vale 98.5% do seu valor de face.", key="bond_price")
+                    face_value = st.number_input("Valor de Face (ex: R$ ou $)", min_value=1, value=1000, key="bond_face_value")
+                with col2:
+                    coupon_rate_pct = st.number_input("Taxa de Cupom Anual (%)", min_value=0.0, value=5.0, step=0.1, format="%.2f", key="bond_coupon")
+                    maturity_date = st.date_input("Data de Vencimento", value=pd.to_datetime("2030-01-01"), key="bond_maturity")
+                with col3:
+                    freq_options = {"Anual": 1, "Semestral": 2}
+                    freq_label = st.selectbox("Frequência do Cupom", options=list(freq_options.keys()), key="bond_freq")
+                    freq = freq_options[freq_label]
+                    st.write("")
+                    st.write("")
+                    calculate_button = st.button("Analisar Título", use_container_width=True, key="bond_calc_button")
+            
+                if calculate_button:
+                    price = (price_pct / 100) * face_value
+                    coupon_rate = coupon_rate_pct / 100
+                    today = date.today()
+                    if maturity_date <= today:
+                        st.error("A data de vencimento deve ser no futuro.")
+                    else:
+                        years_to_maturity = (maturity_date - today).days / 365.25
+                        ytm = calculate_ytm(price, face_value, coupon_rate, years_to_maturity, freq)
+                        current_yield = (coupon_rate * face_value) / price if price > 0 else 0
+                        macaulay_duration = calculate_macaulay_duration(price, face_value, coupon_rate, ytm, years_to_maturity, freq)
+                        modified_duration = macaulay_duration / (1 + (ytm / freq)) if macaulay_duration and ytm else None
+            
+                        st.divider()
+                        st.markdown("##### Resultados da Análise")
+                        res_col1, res_col2, res_col3 = st.columns(3)
+                        with res_col1:
+                            st.metric("Yield to Maturity (YTM)", f"{ytm*100:.3f}%" if ytm else "N/A", help="A taxa de retorno anualizada total que um investidor pode esperar se mantiver o título até o vencimento.")
+                        with res_col2:
+                            st.metric("Current Yield", f"{current_yield*100:.3f}%", help="O retorno anual do cupom em relação ao preço de mercado atual do título.")
+                        with res_col3:
+                            st.metric("Preço de Compra (Calculado)", f"{face_value * price_pct / 100:,.2f}")
+            
+                        st.markdown("##### Análise de Risco (Sensibilidade a Juros)")
+                        risk_col1, risk_col2 = st.columns(2)
+                        with risk_col1:
+                            st.metric("Macaulay Duration (Anos)", f"{macaulay_duration:.3f}" if macaulay_duration else "N/A", help="O tempo médio ponderado, em anos, para receber os fluxos de caixa do título.")
+                        with risk_col2:
+                            st.metric("Modified Duration", f"{modified_duration:.3f}" if modified_duration else "N/A", help="Estimativa da variação percentual no preço do título para uma mudança de 1% (100bps) na taxa de juros do mercado.")
+                            if modified_duration:
+                                st.caption(f"Se os juros subirem 1%, o preço cairá aprox. {modified_duration:.2f}%.")
+            
+                        st.markdown("##### Fluxo de Caixa Projetado")
+                        num_periods = int(years_to_maturity * freq)
+                        coupon_payment = (coupon_rate / freq) * face_value
+                        cashflow_dates = pd.date_range(start=today, periods=num_periods + 1, freq=pd.DateOffset(months=12//freq))[1:]
+                        cashflows = [coupon_payment] * num_periods
+                        cashflows[-1] += face_value
+                        df_cashflow = pd.DataFrame({'Data Projetada': cashflow_dates, 'Pagamento': cashflows})
+                        df_cashflow['Data Projetada'] = df_cashflow['Data Projetada'].dt.strftime('%Y-%m-%d')
+                        st.dataframe(df_cashflow.style.format({'Pagamento': '{:,.2f}'}), use_container_width=True)
+            
+                        st.header("Análise Comparativa de Múltiplos (Comps)")
+                        if peers_string:
+                            if not comps_df.empty:
+                                metric_cols = ['P/L', 'P/VP', 'EV/EBITDA', 'Dividend Yield (%)', 'ROE (%)', 'Margem Bruta (%)']
+                                comps_df[metric_cols] = comps_df[metric_cols].apply(pd.to_numeric, errors='coerce')
+                                st.dataframe(comps_df.set_index('Ativo').style.format("{:.2f}", subset=metric_cols, na_rep="N/A"), use_container_width=True)
+                                col_chart1, col_chart2 = st.columns(2)
+                                with col_chart1: st.plotly_chart(px.bar(comps_df, x='Ativo', y='P/L', title='Comparativo de P/L', text_auto='.2f'), use_container_width=True)
+                                with col_chart2: st.plotly_chart(px.bar(comps_df, x='Ativo', y='EV/EBITDA', title='Comparativo de EV/EBITDA', text_auto='.2f'), use_container_width=True)
+                            else: st.warning("Não foi possível buscar dados para a análise comparativa.")
+                        else: st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
             
             st.header("💰 Valuation por DCF (Modelo Proprietário)")
             with st.expander("Clique aqui para realizar a análise de DCF", expanded=False):
