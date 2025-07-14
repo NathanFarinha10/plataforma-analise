@@ -150,21 +150,34 @@ def calculate_financial_ratios(income_stmt, balance_sheet):
     return pd.DataFrame(ratios).T.sort_index(axis=1)
 
 def calculate_credit_metrics(income_stmt, balance_sheet, cash_flow, info):
+    """
+    Calcula métricas de crédito, alavancagem, cobertura e um score de crédito proprietário.
+    VERSÃO CORRIGIDA para trabalhar com Séries Históricas completas.
+    """
     metrics = {}
     scores = {}
     try:
+        # --- Coleta de Dados Base como Séries Históricas ---
         ebit = income_stmt.loc['Operating Income']
+        # Usamos .get() para o caso de não haver depreciação (ex: empresas financeiras)
+        depreciation = income_stmt.get('Depreciation And Amortization', pd.Series(0, index=income_stmt.columns))
+        ebitda = ebit + depreciation
+        
         interest_expense = income_stmt.loc['Interest Expense Non Operating'].abs()
-        dcf_data = get_dcf_data_from_yf(info['symbol'])
-        net_debt = dcf_data['net_debt'] if dcf_data else balance_sheet.loc['Net Debt']
-        ebitda = info.get('ebitda', ebit)
+        
+        # Cálculo da Dívida Líquida como uma série histórica
+        total_liab = balance_sheet.loc['Total Liabilities Net Minority Interest']
+        cash_and_equiv = balance_sheet.loc['Cash And Cash Equivalents']
+        net_debt = total_liab - cash_and_equiv
+
         total_debt = balance_sheet.loc['Total Debt']
         equity = balance_sheet.loc['Stockholders Equity']
         total_assets = balance_sheet.loc['Total Assets']
         cfo = cash_flow.loc['Operating Cash Flow']
         current_debt = balance_sheet.get('Current Debt And Capital Lease Obligation', pd.Series(0, index=balance_sheet.columns))
         long_term_debt = balance_sheet.get('Long Term Debt And Capital Lease Obligation', pd.Series(0, index=balance_sheet.columns))
-        
+
+        # --- Cálculo das Métricas (agora Séries completas) ---
         metrics['Dívida Líquida / EBITDA'] = net_debt / ebitda
         metrics['Dívida Total / PL'] = total_debt / equity
         metrics['Dívida Total / Ativos'] = total_debt / total_assets
@@ -172,7 +185,8 @@ def calculate_credit_metrics(income_stmt, balance_sheet, cash_flow, info):
         metrics['EBIT / Juros'] = ebit / interest_expense.replace(0, np.nan)
         metrics['Dívida Curto Prazo'] = current_debt
         metrics['Dívida Longo Prazo'] = long_term_debt
-        
+
+        # --- Lógica do Score de Crédito (usando o último valor de cada série) ---
         last_debt_ebitda = metrics['Dívida Líquida / EBITDA'].iloc[-1]
         if last_debt_ebitda < 1.5: scores['Alavancagem'] = 100
         elif last_debt_ebitda < 3: scores['Alavancagem'] = 75
@@ -189,6 +203,7 @@ def calculate_credit_metrics(income_stmt, balance_sheet, cash_flow, info):
         metrics['PAG Credit Score'] = final_score
         
         return metrics
+
     except (KeyError, IndexError, TypeError):
         return {}
 
