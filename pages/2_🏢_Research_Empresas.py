@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (Versão Definitiva e Completa)
+# pages/2_🏢_Research_Empresas.py (Versão Final com Relatório Completo)
 
 import streamlit as st
 import pandas as pd
@@ -27,6 +27,7 @@ def get_financial_data(ticker_symbol):
             'income_stmt': ticker.income_stmt,
             'balance_sheet': ticker.balance_sheet,
             'cash_flow': ticker.cashflow,
+            'earnings_dates': ticker.earnings_dates,
             'news': ticker.news
         }
         return financials
@@ -42,9 +43,8 @@ def get_key_stats_for_comps(tickers):
             ticker = yf.Ticker(ticker_symbol)
             info = ticker.info
             stats = {
-                'Ativo': info.get('symbol'), 'Empresa': info.get('shortName'), 
-                'P/L': info.get('trailingPE'), 'P/VP': info.get('priceToBook'), 
-                'EV/EBITDA': info.get('enterpriseToEbitda'),
+                'Ativo': info.get('symbol'), 'Empresa': info.get('shortName'), 'P/L': info.get('trailingPE'),
+                'P/VP': info.get('priceToBook'), 'EV/EBITDA': info.get('enterpriseToEbitda'),
                 'Margem Bruta (%)': info.get('grossMargins', 0) * 100
             }
             key_stats.append(stats)
@@ -83,7 +83,7 @@ def calculate_dupont_analysis(income_stmt, balance_sheet):
         return pd.DataFrame({'Margem Líquida (%)': net_profit_margin, 'Giro do Ativo': asset_turnover, 'Alavancagem Financeira': financial_leverage, 'ROE Calculado (%)': roe}).T.sort_index(axis=1)
     except KeyError: return pd.DataFrame()
 
-# --- FUNÇÕES DE SCORE E NARRATIVA ---
+# --- FUNÇÕES DE SCORE ---
 def calculate_quality_score(info):
     scores = {}; roe = info.get('returnOnEquity', 0) or 0
     if roe > 0.20: scores['ROE'] = 100
@@ -141,6 +141,7 @@ def get_rating_from_score(score):
     elif score >= 50: return "Neutro", "🟡"
     else: return "Inatrativo", "🔴"
 
+# --- FUNÇÕES DE ANÁLISE NARRATIVA ---
 @st.cache_data
 def analyze_sector(info, comps_df):
     try:
@@ -161,22 +162,16 @@ def analyze_metric_trend(financial_statement, metric_name, unit='B', is_margin=F
     try:
         series = financial_statement.loc[metric_name].sort_index()
         start_value = series.iloc[0]; end_value = series.iloc[-1]; num_years = len(series) - 1
-        if num_years < 1: return f"Dados históricos insuficientes para analisar a tendência de '{metric_name}'."
+        if num_years < 1: return f"Dados históricos insuficientes para analisar '{metric_name}'."
         cagr = ((end_value / start_value) ** (1 / num_years)) - 1 if start_value > 0 and end_value > 0 else 0
-        
-        if cagr > 0.01:
-            trend_text = f"uma tendência de **crescimento**, com uma taxa anual composta (CAGR) de **{cagr:.2%}**" if higher_is_better else f"uma tendência de **aumento**, com CAGR de **{cagr:.2%}**, o que requer atenção"
-        elif cagr < -0.01:
-            trend_text = f"uma tendência de **contração** (CAGR de **{cagr:.2%}**), o que requer atenção" if higher_is_better else f"uma tendência de **redução** (CAGR de **{cagr:.2%}**), um sinal positivo"
-        else:
-            trend_text = "uma tendência de **estabilidade**"
-            
-        if is_margin: value_text = f"passando de {start_value:.2%} para **{end_value:.2%}**"
-        elif unit == 'B': value_text = f"passando de {start_value/1e9:.2f}B para **{end_value/1e9:.2f}B**"
-        else: value_text = f"passando de {start_value:.2f} para **{end_value:.2f}**"
-        
+        if cagr > 0.01: trend_text = f"uma tendência de **crescimento** (CAGR de **{cagr:.2%}**)" if higher_is_better else f"uma tendência de **aumento** (CAGR de **{cagr:.2%}**), o que requer atenção"
+        elif cagr < -0.01: trend_text = f"uma tendência de **contração** (CAGR de **{cagr:.2%}**), o que requer atenção" if higher_is_better else f"uma tendência de **redução** (CAGR de **{cagr:.2%}**), um sinal positivo"
+        else: trend_text = "uma tendência de **estabilidade**"
+        if is_margin: value_text = f"de {start_value:.2%} para **{end_value:.2%}**"
+        elif unit == 'B': value_text = f"de {start_value/1e9:.2f}B para **{end_value/1e9:.2f}B**"
+        else: value_text = f"de {start_value:.2f} para **{end_value:.2f}**"
         return f"Nos últimos {num_years+1} anos, a métrica exibiu {trend_text}, {value_text}."
-    except KeyError: return f"Dados para '{metric_name}' não encontrados no {statement_name}."
+    except KeyError: return f"Dados para '{metric_name}' não encontrados."
     except Exception: return "Não foi possível analisar a tendência da métrica."
 
 @st.cache_data
@@ -189,15 +184,60 @@ def analyze_roic(income_stmt, balance_sheet):
         equity = balance_sheet.loc['Stockholders Equity']; cash = balance_sheet.loc['Cash And Cash Equivalents']
         invested_capital = total_debt + equity - cash
         roic = (nopat / invested_capital) * 100; last_roic = roic.iloc[-1]
-        
         if last_roic > 15: judgment = "um **excelente** nível de retorno, indicando uma forte vantagem competitiva."
-        elif last_roic > 10: judgment = "um **bom** nível de retorno, sugerindo uma alocação de capital eficiente."
-        else: judgment = "um nível de retorno **modesto**, que merece um olhar mais atento."
+        elif last_roic > 10: judgment = "um **bom** nível de retorno, sugerindo eficiência na alocação de capital."
+        else: judgment = "um nível de retorno **modesto**."
         return f"O Retorno sobre o Capital Investido (ROIC) mais recente foi de **{last_roic:.1f}%**, o que consideramos {judgment}"
     except Exception: return "Não foi possível calcular o ROIC."
 
+@st.cache_data
+def analyze_highlights(earnings_dates):
+    """Analisa o último resultado trimestral contra as expectativas."""
+    try:
+        last_earning = earnings_dates.iloc[-1]
+        reported_eps = last_earning.get('Reported EPS')
+        estimated_eps = last_earning.get('EPS Estimate')
+        if pd.notna(reported_eps) and pd.notna(estimated_eps):
+            surprise = ((reported_eps / estimated_eps) - 1) * 100
+            if surprise > 0:
+                return f"No último resultado divulgado, a empresa **superou as expectativas** do mercado, reportando um Lucro por Ação (EPS) de **${reported_eps:.2f}**, cerca de **{surprise:.1f}% acima** do estimado."
+            else:
+                return f"No último resultado divulgado, a empresa **frustrou as expectativas** do mercado, reportando um Lucro por Ação (EPS) de **${reported_eps:.2f}**, cerca de **{abs(surprise):.1f}% abaixo** do estimado."
+        return "Não há dados suficientes para comparar o último resultado com as expectativas do mercado."
+    except Exception:
+        return "Não foi possível analisar os destaques do último resultado."
+
+def generate_summary_and_thesis(scores, info, dcf_upside):
+    """Gera a tese de investimento final e os pontos chave."""
+    quality_score, value_score, momentum_score = scores['quality'], scores['value'], scores['momentum']
+    
+    # Tese Central
+    if quality_score >= 70 and value_score >= 70:
+        tese = "Oportunidade de investimento em uma empresa de alta qualidade negociando a um valuation atrativo."
+    elif quality_score >= 70 and value_score < 50:
+        tese = "Uma empresa de alta qualidade, porém seu valuation atual parece esticado, sugerindo cautela."
+    elif quality_score < 50 and value_score >= 70:
+        tese = "Uma potencial oportunidade de 'turnaround' ou 'deep value', mas que exige uma análise aprofundada dos riscos associados à baixa qualidade dos fundamentos."
+    else:
+        tese = "A combinação de fundamentos que requerem atenção e um valuation não atrativo sugere uma posição de cautela no momento."
+        
+    # Pontos Fortes e Riscos
+    bull_points = []
+    bear_points = []
+    
+    if quality_score >= 85: bull_points.append("💎 Qualidade Fundamental Excelente (ROE e Margens Elevadas)")
+    if value_score >= 85: bull_points.append("🟢 Valuation Muito Atrativo vs. Pares e DCF")
+    if momentum_score >= 70: bull_points.append("📈 Forte Momento de Mercado e Tendência de Alta")
+    if dcf_upside and dcf_upside > 20: bull_points.append(f"💰 Upside de {dcf_upside:.0f}% em nosso Modelo DCF")
+
+    if quality_score < 50: bear_points.append("🔴 Qualidade Fundamental Baixa (Rentabilidade e Margens Fracas)")
+    if value_score < 50: bear_points.append("⚠️ Valuation Esticado ou Acima dos Pares")
+    if momentum_score < 50: bear_points.append("📉 Momento de Mercado Desafiador ou Tendência de Baixa")
+        
+    return tese, bull_points, bear_points
+
 # ==============================================================================
-# --- SEÇÃO PRINCIPAL DA INTERFACE E LÓGICA DE EXECUÇÃO ---
+# --- UI E LÓGICA PRINCIPAL ---
 # ==============================================================================
 
 st.title("Relatório de Análise de Ações")
@@ -226,16 +266,12 @@ if analyze_button:
             income_statement = financials['income_stmt']
             balance_sheet = financials['balance_sheet']
             cash_flow = financials['cash_flow']
+            earnings_dates = financials['earnings_dates']
             news = financials['news']
 
             st.header(f"Relatório de Análise: {info.get('longName', ticker_symbol)}")
             
-            # --- CAPÍTULO 1: SUMÁRIO E HIGHLIGHTS (Placeholder) ---
-            st.subheader("Sumário Executivo e Highlights")
-            st.info("Em breve: Um resumo com os principais pontos positivos, negativos e a tese de investimento final.")
-            st.divider()
-            
-            # --- CÁLCULO DOS SCORES E DCF ---
+            # --- CÁLCULO DE TODOS OS SCORES E VALUATIONS ---
             quality_score, quality_breakdown = calculate_quality_score(info)
             momentum_score, momentum_breakdown = calculate_momentum_score(ticker_symbol)
             intrinsic_value = calculate_dcf(info, g=growth_rate, tg=terminal_growth_rate, wacc=wacc_rate)
@@ -244,6 +280,26 @@ if analyze_button:
             if current_price and intrinsic_value > 0:
                 dcf_upside = ((intrinsic_value / current_price) - 1) * 100
             value_score, value_breakdown = calculate_value_score(info, comps_df, dcf_upside)
+            
+            # --- CAPÍTULO 1: SUMÁRIO E HIGHLIGHTS ---
+            st.subheader("Sumário Executivo e Destaques")
+            tese, bull_points, bear_points = generate_summary_and_thesis({'quality': quality_score, 'value': value_score, 'momentum': momentum_score}, info, dcf_upside)
+            
+            st.info(f"**Tese de Investimento:** \"{tese}\"")
+            
+            col1_sum, col2_sum = st.columns(2)
+            with col1_sum:
+                st.markdown("**Pontos Fortes (Bull Case)**")
+                for point in bull_points:
+                    st.markdown(f"- {point}")
+            with col2_sum:
+                st.markdown("**Riscos e Pontos de Atenção (Bear Case)**")
+                for point in bear_points:
+                    st.markdown(f"- {point}")
+
+            st.markdown("**Destaques do Último Resultado:**")
+            st.write(analyze_highlights(earnings_dates))
+            st.divider()
 
             # --- SEÇÃO DE RATING E CONSENSO ---
             col1, col2 = st.columns(2)
@@ -300,7 +356,6 @@ if analyze_button:
                         df_plot = dupont_df.T.sort_index(); df_plot.index = df_plot.index.year
                         fig = px.line(df_plot, markers=True, title="Evolução dos Componentes do ROE")
                         st.plotly_chart(fig, use_container_width=True)
-                    else: st.warning("Não foi possível calcular a Análise DuPont.")
             with tab_dcf:
                 st.subheader("Valuation por Fluxo de Caixa Descontado (DCF)")
                 if intrinsic_value > 0:
@@ -334,7 +389,7 @@ if analyze_button:
             with col_news:
                 st.subheader("Últimas Notícias")
                 if news:
-                    for item in news[:5]: # Mostra as 5 notícias mais recentes
+                    for item in news[:5]:
                         st.markdown(f"[{item.get('title')}]({item.get('link')})")
                         st.caption(f"Fonte: {item.get('publisher')}")
                         st.divider()
