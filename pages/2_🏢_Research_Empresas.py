@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (Versão Final com PAG Score Completo)
+# pages/2_🏢_Research_Empresas.py (Versão 2.0 - Refatorada com State e Módulos)
 
 import streamlit as st
 import pandas as pd
@@ -9,8 +9,14 @@ import numpy as np
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
 
+# --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
+# Essencial para a página não "resetar" após cliques em botões internos
 if 'analysis_run' not in st.session_state:
     st.session_state.analysis_run = False
+if 'ticker_to_analyze' not in st.session_state:
+    st.session_state.ticker_to_analyze = ""
+if 'peers_to_analyze' not in st.session_state:
+    st.session_state.peers_to_analyze = ""
 
 # --- FUNÇÕES AUXILIARES ---
 def analisar_sentimento(texto):
@@ -81,58 +87,27 @@ def calculate_dupont_analysis(income_stmt, balance_sheet):
 
 @st.cache_data
 def calculate_financial_ratios(income_stmt, balance_sheet):
-    """
-    Calcula um conjunto de ratios financeiros chave a partir dos demonstrativos.
-    Retorna um DataFrame com os ratios calculados ao longo do tempo.
-    """
-    # Usamos o método .get(key, None) para evitar erros se uma linha não existir
     ratios = {}
     try:
-        # Liquidez Corrente = Ativo Circulante / Passivo Circulante
-        current_assets = balance_sheet.loc['Current Assets']
-        current_liabilities = balance_sheet.loc['Current Liabilities']
+        current_assets = balance_sheet.loc['Current Assets']; current_liabilities = balance_sheet.loc['Current Liabilities']
         ratios['Liquidez Corrente'] = current_assets / current_liabilities
-    except KeyError:
-        # Pula o cálculo se os dados não estiverem disponíveis
-        pass 
-
+    except KeyError: pass 
     try:
-        # Dívida / Patrimônio = Dívida Total / Patrimônio Líquido
-        # 'Total Debt' é o campo mais confiável, mas nem sempre presente.
-        if 'Total Debt' in balance_sheet.index:
-            total_debt = balance_sheet.loc['Total Debt']
-        else:
-            # Uma aproximação caso 'Total Debt' não exista
-            total_debt = balance_sheet.loc['Total Liabilities Net Minority Interest']
-            
+        if 'Total Debt' in balance_sheet.index: total_debt = balance_sheet.loc['Total Debt']
+        else: total_debt = balance_sheet.loc['Total Liabilities Net Minority Interest']
         equity = balance_sheet.loc['Stockholders Equity']
         ratios['Dívida / Patrimônio'] = total_debt / equity
-    except KeyError:
-        pass
-
+    except KeyError: pass
     try:
-        # Margem Operacional (%) = Lucro Operacional / Receita Total
-        op_income = income_stmt.loc['Operating Income']
-        revenue = income_stmt.loc['Total Revenue']
+        op_income = income_stmt.loc['Operating Income']; revenue = income_stmt.loc['Total Revenue']
         ratios['Margem Operacional (%)'] = (op_income / revenue) * 100
-    except KeyError:
-        pass
-
+    except KeyError: pass
     try:
-        # Giro do Ativo = Receita Total / Ativo Total
-        revenue = income_stmt.loc['Total Revenue']
-        total_assets = balance_sheet.loc['Total Assets']
+        revenue = income_stmt.loc['Total Revenue']; total_assets = balance_sheet.loc['Total Assets']
         ratios['Giro do Ativo'] = revenue / total_assets
-    except KeyError:
-        pass
-
-    if not ratios:
-        return pd.DataFrame() # Retorna DF vazio se nenhum ratio foi calculado
-
-    # Converte o dicionário para DataFrame e transpõe para ter os anos nas colunas
-    ratios_df = pd.DataFrame(ratios).T
-    # Garante que as colunas (anos) estejam em ordem crescente
-    return ratios_df.sort_index(axis=1)
+    except KeyError: pass
+    if not ratios: return pd.DataFrame()
+    return pd.DataFrame(ratios).T.sort_index(axis=1)
 
 def calculate_quality_score(info, dcf_data):
     scores = {}
@@ -140,19 +115,16 @@ def calculate_quality_score(info, dcf_data):
     if roe > 0.20: scores['ROE'] = 100
     elif roe > 0.15: scores['ROE'] = 75
     else: scores['ROE'] = max(0, (roe / 0.15) * 75)
-    
     op_margin = info.get('operatingMargins', 0) or 0
     if op_margin > 0.15: scores['Margem Operacional'] = 100
     elif op_margin > 0.05: scores['Margem Operacional'] = 75
     else: scores['Margem Operacional'] = max(0, (op_margin / 0.05) * 75)
-
     if dcf_data and dcf_data.get('ebitda') and dcf_data['ebitda'] > 0:
         net_debt_ebitda = dcf_data['net_debt'] / dcf_data['ebitda']
         if net_debt_ebitda < 1: scores['Alavancagem'] = 100
         elif net_debt_ebitda < 3: scores['Alavancagem'] = 75
         elif net_debt_ebitda < 5: scores['Alavancagem'] = 25
         else: scores['Alavancagem'] = 0
-    
     if not scores: return 0, {}
     return np.mean(list(scores.values())), scores
 
@@ -171,13 +143,11 @@ def calculate_value_score(info, comps_df, dcf_upside):
             if pe < peers_pe * 0.8: scores['P/L Relativo'] = 100
             elif pe < peers_pe: scores['P/L Relativo'] = 75
             else: scores['P/L Relativo'] = 25
-    
     if dcf_upside is not None:
         if dcf_upside > 50: scores['DCF Upside'] = 100
         elif dcf_upside > 20: scores['DCF Upside'] = 75
         elif dcf_upside > 0: scores['DCF Upside'] = 50
         else: scores['DCF Upside'] = 0
-
     if not scores: return 0, {}
     return np.mean(list(scores.values())), scores
 
@@ -186,17 +156,13 @@ def calculate_momentum_score(ticker_symbol):
     scores = {}
     is_br = '.SA' in ticker_symbol
     benchmark = '^BVSP' if is_br else '^GSPC'
-    
     try:
         data = yf.download([ticker_symbol, benchmark], period='1y', progress=False)['Close']
         if data.empty: return 0, {}
-
         data['SMA200'] = data[ticker_symbol].rolling(window=200).mean()
-        last_price = data[ticker_symbol].iloc[-1]
-        last_sma200 = data['SMA200'].iloc[-1]
+        last_price = data[ticker_symbol].iloc[-1]; last_sma200 = data['SMA200'].iloc[-1]
         if last_price > last_sma200: scores['Tendência Longo Prazo (vs. MME200)'] = 100
         else: scores['Tendência Longo Prazo (vs. MME200)'] = 0
-        
         returns = data.pct_change()
         for period in [3, 6, 9]:
             days = int(period * 21)
@@ -206,7 +172,6 @@ def calculate_momentum_score(ticker_symbol):
                 if asset_return > bench_return: scores[f'Força Relativa {period}M'] = 100
                 else: scores[f'Força Relativa {period}M'] = 0
     except Exception: return 0, {}
-        
     if not scores: return 0, {}
     return np.mean(list(scores.values())), scores
 
@@ -214,41 +179,20 @@ def calculate_momentum_score(ticker_symbol):
 st.title("Painel de Research de Empresas")
 st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
 
-# SUBSTITUA TODA A LÓGICA DA SUA SIDEBAR POR ISTO:
-
+# --- BARRA LATERAL (SIDEBAR) COM LÓGICA DE ESTADO ---
 st.sidebar.header("Filtros de Análise")
+ticker_symbol_input = st.sidebar.text_input("Ticker Principal", "AAPL", key="ticker_input").upper()
+peers_string_input = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN", key="peers_input").upper()
 
-# 1. Criamos os widgets com chaves (keys) únicas e explícitas
-ticker_symbol_input = st.sidebar.text_input(
-    "Ticker Principal", 
-    "AAPL", 
-    key="ticker_input"
-).upper()
-
-peers_string_input = st.sidebar.text_area(
-    "Tickers dos Concorrentes (para Comps)", 
-    "MSFT, GOOG, AMZN", 
-    key="peers_input"
-).upper()
-
-# 2. O botão de análise agora salva os valores no session_state
 if st.sidebar.button("Analisar", key="analyze_button"):
     st.session_state.analysis_run = True
-    # Guardamos os valores dos inputs na "memória" para usar depois
     st.session_state.ticker_to_analyze = ticker_symbol_input
     st.session_state.peers_to_analyze = peers_string_input
-    # Limpamos os dados antigos para forçar o recálculo do DCF se o ticker mudar
-    if 'dcf_result' in st.session_state:
-        del st.session_state.dcf_result
-peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
 
-# Quando o botão for clicado, ele liga a nossa variável de estado
-if st.sidebar.button("Analisar"):
-    st.session_state.analysis_run = True
-
+# --- LÓGICA DE EXIBIÇÃO DA ANÁLISE (CONTROLADA PELO session_state) ---
 if st.session_state.analysis_run:
-    ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
-    peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
+    ticker_symbol = st.session_state.ticker_to_analyze
+    peers_string = st.session_state.peers_to_analyze
     
     if not ticker_symbol:
         st.warning("Por favor, digite um ticker principal para analisar.")
@@ -256,6 +200,7 @@ if st.session_state.analysis_run:
         info = yf.Ticker(ticker_symbol).info
         if not info.get('longName'):
             st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido.")
+            st.session_state.analysis_run = False
         else:
             with st.spinner("Analisando... Este processo pode levar um momento."):
                 dcf_data = get_dcf_data_from_yf(ticker_symbol)
@@ -265,25 +210,18 @@ if st.session_state.analysis_run:
             st.header(f"Análise de {info['longName']} ({info['symbol']})")
 
             st.subheader(f"Rating Proprietário (PAG Score)")
-            dcf_upside = None
-            
             quality_score, quality_breakdown = calculate_quality_score(info, dcf_data)
             quality_rating, quality_emoji = get_rating_from_score(quality_score)
-            value_score, value_breakdown = calculate_value_score(info, comps_df, dcf_upside)
+            # O dcf_upside é None aqui, pois o cálculo agora é feito sob demanda
+            value_score, value_breakdown = calculate_value_score(info, comps_df, dcf_upside=None)
             value_rating, value_emoji = get_rating_from_score(value_score)
             momentum_score, momentum_breakdown = calculate_momentum_score(ticker_symbol)
             momentum_rating, momentum_emoji = get_rating_from_score(momentum_score)
 
             col1_rat, col2_rat, col3_rat = st.columns(3)
-            with col1_rat:
-                st.metric("Qualidade", f"{quality_rating} {quality_emoji}", f"{quality_score:.0f} / 100")
-                with st.expander("Detalhes"): st.write(quality_breakdown)
-            with col2_rat:
-                st.metric("Valor (Value)", f"{value_rating} {value_emoji}", f"{value_score:.0f} / 100")
-                with st.expander("Detalhes"): st.write(value_breakdown)
-            with col3_rat:
-                st.metric("Momento", f"{momentum_rating} {momentum_emoji}", f"{momentum_score:.0f} / 100")
-                with st.expander("Detalhes"): st.write(momentum_breakdown)
+            with col1_rat: st.metric("Qualidade", f"{quality_rating} {quality_emoji}", f"{quality_score:.0f} / 100"); st.expander("Detalhes").write(quality_breakdown)
+            with col2_rat: st.metric("Valor (Value)", f"{value_rating} {value_emoji}", f"{value_score:.0f} / 100"); st.expander("Detalhes").write(value_breakdown)
+            with col3_rat: st.metric("Momento", f"{momentum_rating} {momentum_emoji}", f"{momentum_score:.0f} / 100"); st.expander("Detalhes").write(momentum_breakdown)
             st.divider()
 
             st.subheader("Consenso de Mercado (Wall Street)")
@@ -291,9 +229,7 @@ if st.session_state.analysis_run:
             col1_cons, col2_cons, col3_cons, col4_cons = st.columns(4)
             col1_cons.metric("Recomendação Média", recommendation.upper() if recommendation != 'N/A' else 'N/A')
             col2_cons.metric("Preço-Alvo Médio", f"{target_price:.2f}" if target_price > 0 else "N/A")
-            if target_price > 0 and current_price > 0:
-                upside_consensus = ((target_price / current_price) - 1) * 100
-                col3_cons.metric("Upside do Consenso", f"{upside_consensus:.2f}%")
+            if target_price > 0 and current_price > 0: col3_cons.metric("Upside do Consenso", f"{((target_price / current_price) - 1) * 100:.2f}%")
             else: col3_cons.metric("Upside do Consenso", "N/A")
             col4_cons.metric("Nº de Analistas", f"{analyst_count}" if analyst_count > 0 else "N/A")
             st.divider()
@@ -306,169 +242,90 @@ if st.session_state.analysis_run:
             with col4: st.metric("Dividend Yield", f"{info.get('dividendYield', 0) * 100:.2f}%"); st.metric("Beta", f"{info.get('beta', 0):.2f}")
             with st.expander("Descrição da Empresa"): st.write(info.get('longBusinessSummary', 'Descrição não disponível.'))
 
-            st.header("Análise Financeira Histórica e DuPont")
+            st.header("Análise Financeira Histórica")
             ticker_obj = yf.Ticker(ticker_symbol)
-            income_statement = ticker_obj.income_stmt
-            balance_sheet = ticker_obj.balance_sheet
-            cash_flow = ticker_obj.cashflow
+            income_statement = ticker_obj.income_stmt; balance_sheet = ticker_obj.balance_sheet; cash_flow = ticker_obj.cashflow
             tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Ratios Financeiros"])
-            with tab_dre:
-                st.subheader("Evolução da Receita e Lucro"); dre_items = ['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income']
-                dre_df = income_statement[income_statement.index.isin(dre_items)]; plot_financial_statement(dre_df, "Demonstração de Resultados Anual")
-            with tab_bp:
-                st.subheader("Evolução dos Ativos e Passivos"); bp_items = ['Total Assets', 'Total Liabilities Net Minority Interest', 'Stockholders Equity']
-                bp_df = balance_sheet[balance_sheet.index.isin(bp_items)]; plot_financial_statement(bp_df, "Balanço Patrimonial Anual")
+            
+            with tab_dre: plot_financial_statement(income_statement[income_statement.index.isin(['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income'])], "Demonstração de Resultados Anual")
+            with tab_bp: plot_financial_statement(balance_sheet[balance_sheet.index.isin(['Total Assets', 'Total Liabilities Net Minority Interest', 'Stockholders Equity'])], "Balanço Patrimonial Anual")
             with tab_fcf:
-                st.subheader("Evolução dos Fluxos de Caixa"); fcf_items = ['Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'Free Cash Flow']
-                fcf_items_available = [item for item in fcf_items if item in cash_flow.index]
-                fcf_df = cash_flow[cash_flow.index.isin(fcf_items_available)]; plot_financial_statement(fcf_df, "Fluxo de Caixa Anual")
+                fcf_items = [item for item in ['Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'Free Cash Flow'] if item in cash_flow.index]
+                plot_financial_statement(cash_flow[cash_flow.index.isin(fcf_items)], "Fluxo de Caixa Anual")
             with tab_dupont:
                 st.subheader("Decomposição do ROE (Return on Equity)")
                 dupont_df = calculate_dupont_analysis(income_statement, balance_sheet)
                 if not dupont_df.empty:
                     st.dataframe(dupont_df.style.format("{:.2f}"), use_container_width=True)
                     df_plot = dupont_df.T.sort_index(); df_plot.index = df_plot.index.year
-                    fig_dupont = px.line(df_plot, markers=True, title="Evolução dos Componentes do ROE")
-                    fig_dupont.update_layout(xaxis_title="Ano", yaxis_title="Valor / Múltiplo", legend_title="Componentes"); st.plotly_chart(fig_dupont, use_container_width=True)
-                    st.caption("ROE = (Margem Líquida) x (Giro do Ativo) x (Alavancagem Financeira)")
+                    fig_dupont = px.line(df_plot, markers=True, title="Evolução dos Componentes do ROE"); st.plotly_chart(fig_dupont, use_container_width=True)
                 else: st.warning("Não foi possível calcular a Análise DuPont.")
             with tab_ratios:
                 st.subheader("Análise de Indicadores Financeiros Chave")
-                # Chama a nova função para calcular os ratios
                 ratios_df = calculate_financial_ratios(income_statement, balance_sheet)
-
                 if not ratios_df.empty:
-                    # Prepara o dataframe para plotagem
-                    df_plot_ratios = ratios_df.T.sort_index()
-                    df_plot_ratios.index = df_plot_ratios.index.year
-
-                    # Layout em duas colunas para melhor visualização
+                    df_plot_ratios = ratios_df.T.sort_index(); df_plot_ratios.index = df_plot_ratios.index.year
                     col1, col2 = st.columns(2)
-
-                    # --- Ratio 1: Liquidez Corrente ---
                     if 'Liquidez Corrente' in df_plot_ratios.columns:
-                        with col1:
-                            latest_liquidez = df_plot_ratios['Liquidez Corrente'].iloc[-1]
-                            st.metric("Liquidez Corrente (x)", f"{latest_liquidez:.2f}")
-                            fig = px.line(df_plot_ratios, y='Liquidez Corrente', title='Evolução da Liquidez Corrente', markers=True, labels={'value': 'Índice (x)', 'index': 'Ano'})
-                            st.plotly_chart(fig, use_container_width=True)
-                    
-                    # --- Ratio 2: Dívida / Patrimônio ---
+                        with col1: st.metric("Liquidez Corrente (x)", f"{df_plot_ratios['Liquidez Corrente'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Liquidez Corrente', title='Evolução da Liquidez Corrente', markers=True), use_container_width=True)
                     if 'Dívida / Patrimônio' in df_plot_ratios.columns:
-                        with col2:
-                            latest_divida = df_plot_ratios['Dívida / Patrimônio'].iloc[-1]
-                            st.metric("Dívida / Patrimônio (x)", f"{latest_divida:.2f}")
-                            fig = px.line(df_plot_ratios, y='Dívida / Patrimônio', title='Evolução do Endividamento', markers=True, labels={'value': 'Índice (x)', 'index': 'Ano'})
-                            st.plotly_chart(fig, use_container_width=True)
-
-                    # --- Ratio 3: Margem Operacional ---
+                        with col2: st.metric("Dívida / Patrimônio (x)", f"{df_plot_ratios['Dívida / Patrimônio'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Dívida / Patrimônio', title='Evolução do Endividamento', markers=True), use_container_width=True)
                     if 'Margem Operacional (%)' in df_plot_ratios.columns:
-                        with col1:
-                            latest_margem = df_plot_ratios['Margem Operacional (%)'].iloc[-1]
-                            st.metric("Margem Operacional (%)", f"{latest_margem:.2f}%")
-                            fig = px.line(df_plot_ratios, y='Margem Operacional (%)', title='Evolução da Margem Operacional', markers=True, labels={'value': 'Margem (%)', 'index': 'Ano'})
-                            st.plotly_chart(fig, use_container_width=True)
-                    
-                    # --- Ratio 4: Giro do Ativo ---
+                        with col1: st.metric("Margem Operacional (%)", f"{df_plot_ratios['Margem Operacional (%)'].iloc[-1]:.2f}%"); st.plotly_chart(px.line(df_plot_ratios, y='Margem Operacional (%)', title='Evolução da Margem Operacional', markers=True), use_container_width=True)
                     if 'Giro do Ativo' in df_plot_ratios.columns:
-                        with col2:
-                            latest_giro = df_plot_ratios['Giro do Ativo'].iloc[-1]
-                            st.metric("Giro do Ativo (x)", f"{latest_giro:.2f}")
-                            fig = px.line(df_plot_ratios, y='Giro do Ativo', title='Evolução do Giro do Ativo', markers=True, labels={'value': 'Índice (x)', 'index': 'Ano'})
-                            st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning("Dados insuficientes para calcular os ratios financeiros desta empresa.")
+                        with col2: st.metric("Giro do Ativo (x)", f"{df_plot_ratios['Giro do Ativo'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Giro do Ativo', title='Evolução do Giro do Ativo', markers=True), use_container_width=True)
+                else: st.warning("Dados insuficientes para calcular os ratios financeiros.")
             
             st.header("Análise Comparativa de Múltiplos (Comps)")
             if peers_string:
                 if not comps_df.empty:
                     metric_cols = ['P/L', 'P/VP', 'EV/EBITDA', 'Dividend Yield (%)', 'ROE (%)', 'Margem Bruta (%)']
-                    for col in metric_cols: comps_df[col] = pd.to_numeric(comps_df[col], errors='coerce')
-                    formatter = {col: "{:.2f}" for col in metric_cols}
-                    st.dataframe(comps_df.set_index('Ativo').style.format(formatter, na_rep="N/A"), use_container_width=True)
-                    st.subheader("Visualização dos Múltiplos")
+                    comps_df[metric_cols] = comps_df[metric_cols].apply(pd.to_numeric, errors='coerce')
+                    st.dataframe(comps_df.set_index('Ativo').style.format("{:.2f}", na_rep="N/A"), use_container_width=True)
                     col_chart1, col_chart2 = st.columns(2)
-                    with col_chart1: fig_pe = px.bar(comps_df, x='Ativo', y='P/L', title='Comparativo de P/L', text_auto='.2f'); st.plotly_chart(fig_pe, use_container_width=True)
-                    with col_chart2: fig_ev = px.bar(comps_df, x='Ativo', y='EV/EBITDA', title='Comparativo de EV/EBITDA', text_auto='.2f'); st.plotly_chart(fig_ev, use_container_width=True)
+                    with col_chart1: st.plotly_chart(px.bar(comps_df, x='Ativo', y='P/L', title='Comparativo de P/L', text_auto='.2f'), use_container_width=True)
+                    with col_chart2: st.plotly_chart(px.bar(comps_df, x='Ativo', y='EV/EBITDA', title='Comparativo de EV/EBITDA', text_auto='.2f'), use_container_width=True)
                 else: st.warning("Não foi possível buscar dados para a análise comparativa.")
             else: st.info("Insira tickers de concorrentes na barra lateral para ver a análise comparativa.")
-
-            # COLE ESTE NOVO BLOCO DE CÓDIGO AQUI
-
+            
             st.header("💰 Valuation por DCF (Modelo Proprietário)")
             with st.expander("Clique aqui para realizar a análise de DCF", expanded=False):
-                st.info("Insira as premissas do modelo e clique em 'Calcular' para ver o resultado do valuation.")
-                
-                # Inputs do DCF dentro da nova seção
-                col1_inputs, col2_inputs, col3_inputs = st.columns(3)
-                with col1_inputs:
-                    g_dcf = st.number_input("Taxa de Crescimento do FCF (anual %)", value=5.0, step=0.5, format="%.1f", key="dcf_g") / 100
-                with col2_inputs:
-                    tg_dcf = st.number_input("Taxa de Perpetuidade (%)", value=2.5, step=0.1, format="%.1f", key="dcf_tg") / 100
-                with col3_inputs:
-                    wacc_dcf = st.number_input("Taxa de Desconto (WACC %)", value=9.0, step=0.5, format="%.1f", key="dcf_wacc") / 100
-            
-                # Botão para rodar o cálculo sob demanda
-                run_dcf_button = st.button("Calcular Preço Justo")
-            
-                if run_dcf_button:
-                    # Verifica se os dados necessários da empresa foram carregados
+                st.info("Insira as premissas do modelo e clique em 'Calcular' para ver o resultado.")
+                col1, col2, col3 = st.columns(3)
+                with col1: g_dcf = st.number_input("Cresc. FCF (anual %)", 5.0, step=0.5, format="%.1f", key="dcf_g") / 100
+                with col2: tg_dcf = st.number_input("Perpetuidade (%)", 2.5, step=0.1, format="%.1f", key="dcf_tg") / 100
+                with col3: wacc_dcf = st.number_input("WACC (%)", 9.0, step=0.5, format="%.1f", key="dcf_wacc") / 100
+                if st.button("Calcular Preço Justo", key="dcf_button"):
                     if dcf_data:
-                        # Roda o cálculo do DCF com os valores inseridos na nova seção
-                        intrinsic_value = calculate_dcf(
-                            fcf=dcf_data['fcf'],
-                            net_debt=dcf_data['net_debt'],
-                            shares_outstanding=dcf_data['shares_outstanding'],
-                            g=g_dcf,
-                            tg=tg_dcf,
-                            wacc=wacc_dcf
-                        )
-            
-                        if intrinsic_value > 0:
+                        intrinsic_value = calculate_dcf(fcf=dcf_data['fcf'], net_debt=dcf_data['net_debt'], shares_outstanding=dcf_data['shares_outstanding'], g=g_dcf, tg=tg_dcf, wacc=wacc_dcf)
+                        if intrinsic_value > 0 and current_price > 0:
+                            dcf_upside = ((intrinsic_value / current_price) - 1) * 100
                             st.subheader("Resultado do Valuation")
-                            current_price = info.get('currentPrice')
-                            if current_price:
-                                dcf_upside = ((intrinsic_value / current_price) - 1) * 100
-                                
-                                # Exibe os resultados
-                                col1_dcf, col2_dcf, col3_dcf = st.columns(3)
-                                col1_dcf.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
-                                col2_dcf.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
-                                col3_dcf.metric("Potencial de Upside/Downside", f"{dcf_upside:.2f}%",
-                                                delta_color=("inverse" if dcf_upside < 0 else "normal"))
-            
-                                # Lógica da recomendação
-                                if dcf_upside > 20:
-                                    st.success("RECOMENDAÇÃO (MODELO PAG): COMPRAR")
-                                elif dcf_upside < -20:
-                                    st.error("RECOMENDAÇÃO (MODELO PAG): VENDER")
-                                else:
-                                    st.warning("RECOMENDAÇÃO (MODELO PAG): MANTER")
-                            else:
-                                st.warning("Preço atual da ação não disponível para calcular o upside.")
-                        else:
-                            st.error("Não foi possível calcular o valor. Verifique se a taxa de WACC é maior que a taxa de perpetuidade.")
-                    else:
-                        st.error("Dados financeiros da empresa (FCF, Dívida) não puderam ser carregados. Não é possível rodar o DCF.")
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("Preço Justo (Valor Intrínseco)", f"{info.get('currency', '')} {intrinsic_value:.2f}")
+                            c2.metric("Preço Atual de Mercado", f"{info.get('currency', '')} {current_price:.2f}")
+                            c3.metric("Potencial de Upside/Downside", f"{dcf_upside:.2f}%")
+                            if dcf_upside > 20: st.success("RECOMENDAÇÃO (MODELO PAG): COMPRAR")
+                            elif dcf_upside < -20: st.error("RECOMENDAÇÃO (MODELO PAG): VENDER")
+                            else: st.warning("RECOMENDAÇÃO (MODELO PAG): MANTER")
+                        else: st.error("Não foi possível calcular. Verifique se WACC > Perpetuidade e se há Preço Atual.")
+                    else: st.error("Dados financeiros não carregados. Impossível rodar o DCF.")
 
             st.header("Histórico de Cotações")
             hist_df = yf.Ticker(ticker_symbol).history(period="5y")
-            fig_price = px.line(hist_df, x=hist_df.index, y="Close", title=f"Preço de Fechamento de {info['shortName']}", labels={'Close': f'Preço ({info["currency"]})', 'Date': 'Data'})
-            st.plotly_chart(fig_price, use_container_width=True)
+            st.plotly_chart(px.line(hist_df, y="Close", title=f"Preço de Fechamento de {info['shortName']}"), use_container_width=True)
 
             st.header("Notícias Recentes e Análise de Sentimento")
             news = yf.Ticker(ticker_symbol).news
             if news:
-                for item in news:
-                    content = item.get('content', {});
-                    if not content: continue
-                    titulo = content.get('title')
+                for item in news[:5]: # Limita a 5 notícias para não poluir a tela
+                    titulo = item.get('title')
                     if not titulo: continue
-                    provider = item.get('provider', {}); publisher = provider.get('displayName', 'Não Informado')
-                    link = item.get('canonicalUrl', {}).get('url'); sentimento, icone = analisar_sentimento(titulo)
+                    publisher = item.get('publisher', 'Não Informado')
+                    link = item.get('link'); sentimento, icone = analisar_sentimento(titulo)
                     with st.expander(f"{icone} {titulo}"):
-                        st.markdown(f"**Publicado por:** {publisher}"); st.markdown(f"**Sentimento:** {sentimento}")
+                        st.markdown(f"**Publicado por:** {publisher} | **Sentimento:** {sentimento}")
                         if link: st.link_button("Ler notícia completa", link)
-            else: st.write("Nenhuma notícia recente encontrada para esta ação.")
+            else: st.write("Nenhuma notícia recente encontrada.")
 else:
     st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa.")
