@@ -333,26 +333,22 @@ if st.session_state.analysis_run:
 
             # SUBSTITUA A SEÇÃO DE NOTÍCIAS POR ESTE BLOCO DE DEPURAÇÃO
 
+            # SUBSTITUA O BLOCO DE TESTE POR ESTE CÓDIGO FINAL
+
             st.header("Notícias Recentes e Análise de Sentimento")
-            st.success("--- INÍCIO DO BLOCO DE TESTE DE NOTÍCIAS ---") # Mensagem para provar que o bloco foi alcançado
+            # Adicionamos uma nota ao usuário sobre a instabilidade da fonte de dados
+            st.caption("Nota: A busca de notícias da fonte de dados pode ser instável e não funcionar para todos os ativos.")
             
             try:
-                st.write("Dentro do bloco TRY...") # Mensagem de diagnóstico 1
-            
-                # Vamos criar notícias falsas em vez de chamar a API
-                fake_news = [
-                    {'title': 'Notícia de Teste 1: Streamlit funciona como esperado', 'publisher': 'Sistema de Teste', 'link': 'https://streamlit.io'},
-                    {'title': 'Notícia de Teste 2: Análise de sentimento também funciona', 'publisher': 'Sistema de Teste', 'link': 'https://google.com'}
-                ]
-                news = fake_news # A variável 'news' agora contém nossa lista falsa
-            
-                st.write(f"Conteúdo da variável 'news': `{news}`") # Mensagem de diagnóstico 2
-            
+                # 1. Fazemos a chamada real à API
+                news = yf.Ticker(ticker_symbol).news
+                
+                # 2. Verificamos se a chamada retornou uma lista vazia
                 if not news:
-                    st.info("A variável 'news' está vazia.")
+                    st.info("A busca por notícias não retornou resultados para este ativo.")
                 else:
-                    st.write("A variável 'news' NÃO está vazia, entrando no loop de exibição...") # Mensagem de diagnóstico 3
-                    for item in news[:5]:
+                    # 3. Se houver notícias, exibimos
+                    for item in news[:5]: 
                         titulo = item.get('title')
                         if not titulo:
                             continue
@@ -367,9 +363,7 @@ if st.session_state.analysis_run:
                                 st.link_button("Ler notícia completa", link)
             
             except Exception as e:
-                st.error(f"--- ATENÇÃO: OCORREU UMA EXCEÇÃO INESPERADA! ---")
-                st.error(f"Detalhes do erro: {e}")
-            
-            st.success("--- FIM DO BLOCO DE TESTE DE NOTÍCIAS ---")
+                # 4. Se qualquer outro erro ocorrer, nós o capturamos e exibimos
+                st.warning(f"Ocorreu um erro ao tentar carregar as notícias: {e}")
 else:
     st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa.")
