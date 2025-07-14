@@ -214,7 +214,32 @@ def calculate_momentum_score(ticker_symbol):
 st.title("Painel de Research de Empresas")
 st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
 
-st.sidebar.header("Filtros de Análise"); ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
+# SUBSTITUA TODA A LÓGICA DA SUA SIDEBAR POR ISTO:
+
+st.sidebar.header("Filtros de Análise")
+
+# 1. Criamos os widgets com chaves (keys) únicas e explícitas
+ticker_symbol_input = st.sidebar.text_input(
+    "Ticker Principal", 
+    "AAPL", 
+    key="ticker_input"
+).upper()
+
+peers_string_input = st.sidebar.text_area(
+    "Tickers dos Concorrentes (para Comps)", 
+    "MSFT, GOOG, AMZN", 
+    key="peers_input"
+).upper()
+
+# 2. O botão de análise agora salva os valores no session_state
+if st.sidebar.button("Analisar", key="analyze_button"):
+    st.session_state.analysis_run = True
+    # Guardamos os valores dos inputs na "memória" para usar depois
+    st.session_state.ticker_to_analyze = ticker_symbol_input
+    st.session_state.peers_to_analyze = peers_string_input
+    # Limpamos os dados antigos para forçar o recálculo do DCF se o ticker mudar
+    if 'dcf_result' in st.session_state:
+        del st.session_state.dcf_result
 peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
 
 # Quando o botão for clicado, ele liga a nossa variável de estado
