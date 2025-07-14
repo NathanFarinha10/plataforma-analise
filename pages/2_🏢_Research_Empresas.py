@@ -1,4 +1,4 @@
-# pages/2_🏢_Research_Empresas.py (Versão 2.0 - Refatorada com State e Módulos)
+# pages/2_🏢_Research_Empresas.py (Versão 2.2 - Final com Ordenação)
 
 import streamlit as st
 import pandas as pd
@@ -6,8 +6,10 @@ import yfinance as yf
 import plotly.express as px
 import numpy as np
 
-# COLE ESTE BLOCO NO TOPO DO SEU SCRIPT, APÓS OS IMPORTS
+# --- CONFIGURAÇÕES E CONSTANTES ---
+st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
 
+# LISTAS DE ORDENAÇÃO PARA DEMONSTRATIVOS FINANCEIROS
 DRE_ORDER = [
     'Total Revenue', 'Cost Of Revenue', 'Gross Profit', 'Operating Expense',
     'Selling General And Administration', 'Research And Development', 'Operating Income',
@@ -15,36 +17,22 @@ DRE_ORDER = [
     'Pretax Income', 'Tax Provision', 'Net Income Common Stockholders', 'Net Income',
     'Basic EPS', 'Diluted EPS', 'EBITDA'
 ]
-
 BP_ORDER = [
-    # Ativos Circulantes
     'Cash And Cash Equivalents', 'Receivables', 'Inventory', 'Other Current Assets', 'Total Current Assets',
-    # Ativos Não Circulantes
     'Net PPE', 'Goodwill And Other Intangible Assets', 'Other Non Current Assets', 'Total Non Current Assets',
-    # Total de Ativos
     'Total Assets',
-    # Passivos Circulantes
     'Payables And Accrued Expenses', 'Current Debt And Capital Lease Obligation', 'Other Current Liabilities', 'Total Current Liabilities',
-    # Passivos Não Circulantes
     'Long Term Debt And Capital Lease Obligation', 'Other Non Current Liabilities', 'Total Non Current Liabilities',
-    # Total de Passivos
     'Total Liabilities Net Minority Interest',
-    # Patrimônio Líquido
     'Stockholders Equity', 'Total Equity Gross Minority Interest',
-    # Total Passivo + PL
     'Total Liabilities And Equity'
 ]
-
 FCF_ORDER = [
     'Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'End Cash Position',
     'Changes In Cash', 'Capital Expenditure', 'Free Cash Flow'
 ]
 
-# --- Configuração da Página ---
-st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
-
-# --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
-# Essencial para a página não "resetar" após cliques em botões internos
+# INICIALIZAÇÃO DO ESTADO DA SESSÃO
 if 'analysis_run' not in st.session_state:
     st.session_state.analysis_run = False
 if 'ticker_to_analyze' not in st.session_state:
@@ -53,6 +41,22 @@ if 'peers_to_analyze' not in st.session_state:
     st.session_state.peers_to_analyze = ""
 
 # --- FUNÇÕES AUXILIARES ---
+
+def formatar_numero(n):
+    if pd.isna(n): return "-"
+    n = float(n)
+    if abs(n) >= 1_000_000_000: return f"{n / 1_000_000_000:.2f} B"
+    if abs(n) >= 1_000_000: return f"{n / 1_000_000:.2f} M"
+    if abs(n) >= 1_000: return f"{n / 1_000:.2f} K"
+    return f"{n:.2f}"
+
+def reorder_financial_statement(df, order_list):
+    existing_rows = df.index.tolist()
+    ordered_rows = [row for row in order_list if row in existing_rows]
+    extra_rows = [row for row in existing_rows if row not in ordered_rows]
+    final_order = ordered_rows + extra_rows
+    return df.reindex(final_order)
+
 def analisar_sentimento(texto):
     texto = texto.lower()
     palavras_positivas = ['crescimento', 'lucro', 'aumento', 'supera', 'expansão', 'forte', 'otimista', 'sucesso', 'melhora', 'compra', 'growth', 'profit', 'increase', 'beats', 'expansion', 'strong', 'optimistic', 'success', 'improves', 'buy', 'upgrade']
@@ -65,14 +69,6 @@ def analisar_sentimento(texto):
     if score > 0: return 'Positivo', '🟢'
     elif score < 0: return 'Negativo', '🔴'
     else: return 'Neutro', '⚪️'
-
-def reorder_financial_statement(df, order_list):
-    """Reordena as linhas de um dataframe financeiro de acordo com uma lista padrão."""
-    existing_rows = df.index.tolist()
-    ordered_rows = [row for row in order_list if row in existing_rows]
-    extra_rows = [row for row in existing_rows if row not in ordered_rows]
-    final_order = ordered_rows + extra_rows
-    return df.reindex(final_order)
 
 @st.cache_data
 def get_key_stats(tickers):
@@ -126,19 +122,6 @@ def calculate_dupont_analysis(income_stmt, balance_sheet):
         roe = net_profit_margin * asset_turnover * financial_leverage / 100
         return pd.DataFrame({'Margem Líquida (%)': net_profit_margin, 'Giro do Ativo': asset_turnover, 'Alavancagem Financeira': financial_leverage, 'ROE Calculado (%)': roe}).T.sort_index(axis=1)
     except KeyError: return pd.DataFrame()
-
-def formatar_numero(n):
-    """Formata um número para uma string legível (Milhões, Bilhões)."""
-    if pd.isna(n):
-        return "-"
-    n = float(n)
-    if abs(n) >= 1_000_000_000:
-        return f"{n / 1_000_000_000:.2f} B"
-    if abs(n) >= 1_000_000:
-        return f"{n / 1_000_000:.2f} M"
-    if abs(n) >= 1_000:
-        return f"{n / 1_000:.2f} K"
-    return f"{n:.2f}"
 
 @st.cache_data
 def calculate_financial_ratios(income_stmt, balance_sheet):
@@ -234,7 +217,6 @@ def calculate_momentum_score(ticker_symbol):
 st.title("Painel de Research de Empresas")
 st.markdown("Analise ações individuais, compare com pares e calcule o valor intrínseco.")
 
-# --- BARRA LATERAL (SIDEBAR) COM LÓGICA DE ESTADO ---
 st.sidebar.header("Filtros de Análise")
 ticker_symbol_input = st.sidebar.text_input("Ticker Principal", "AAPL", key="ticker_input").upper()
 peers_string_input = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN", key="peers_input").upper()
@@ -244,7 +226,6 @@ if st.sidebar.button("Analisar", key="analyze_button"):
     st.session_state.ticker_to_analyze = ticker_symbol_input
     st.session_state.peers_to_analyze = peers_string_input
 
-# --- LÓGICA DE EXIBIÇÃO DA ANÁLISE (CONTROLADA PELO session_state) ---
 if st.session_state.analysis_run:
     ticker_symbol = st.session_state.ticker_to_analyze
     peers_string = st.session_state.peers_to_analyze
@@ -267,7 +248,6 @@ if st.session_state.analysis_run:
             st.subheader(f"Rating Proprietário (PAG Score)")
             quality_score, quality_breakdown = calculate_quality_score(info, dcf_data)
             quality_rating, quality_emoji = get_rating_from_score(quality_score)
-            # O dcf_upside é None aqui, pois o cálculo agora é feito sob demanda
             value_score, value_breakdown = calculate_value_score(info, comps_df, dcf_upside=None)
             value_rating, value_emoji = get_rating_from_score(value_score)
             momentum_score, momentum_breakdown = calculate_momentum_score(ticker_symbol)
@@ -302,47 +282,42 @@ if st.session_state.analysis_run:
             income_statement = ticker_obj.income_stmt; balance_sheet = ticker_obj.balance_sheet; cash_flow = ticker_obj.cashflow
             tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Ratios Financeiros"])
             
-           # SUBSTITUA O CONTEÚDO DA ABA DRE
             with tab_dre:
                 st.subheader("Evolução da Receita e Lucro")
                 dre_items_chart = ['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income']
                 plot_financial_statement(income_statement[income_statement.index.isin(dre_items_chart)], "Demonstração de Resultados Anual (Resumo)")
-                
                 with st.expander("Visualizar Demonstração de Resultados (DRE) completa"):
-                    # Prepara a tabela para exibição
                     df_dre = income_statement.copy()
-                    df_bp = reorder_financial_statement(df_bp, BP_ORDER)
                     df_dre = reorder_financial_statement(df_dre, DRE_ORDER)
-                    df_dre.dropna(how='all', inplace=True) # Remove linhas sem nenhum dado
-                    df_dre.columns = df_dre.columns.year # Usa apenas o ano como coluna
-                    # Aplica a formatação em todas as células
-                    df_dre_formatted = df_dre.applymap(formatar_numero)
+                    df_dre.dropna(how='all', inplace=True)
+                    df_dre.columns = df_dre.columns.year
+                    df_dre_formatted = df_dre.apply(lambda x: x.map(formatar_numero))
                     st.dataframe(df_dre_formatted, use_container_width=True)
-            # SUBSTITUA O CONTEÚDO DA ABA BP
+
             with tab_bp:
                 st.subheader("Evolução dos Ativos e Passivos")
                 bp_items_chart = ['Total Assets', 'Total Liabilities Net Minority Interest', 'Stockholders Equity']
                 plot_financial_statement(balance_sheet[balance_sheet.index.isin(bp_items_chart)], "Balanço Patrimonial Anual (Resumo)")
-            
                 with st.expander("Visualizar Balanço Patrimonial (BP) completo"):
                     df_bp = balance_sheet.copy()
+                    df_bp = reorder_financial_statement(df_bp, BP_ORDER)
                     df_bp.dropna(how='all', inplace=True)
                     df_bp.columns = df_bp.columns.year
-                    df_bp_formatted = df_bp.applymap(formatar_numero)
+                    df_bp_formatted = df_bp.apply(lambda x: x.map(formatar_numero))
                     st.dataframe(df_bp_formatted, use_container_width=True)
-            # SUBSTITUA O CONTEÚDO DA ABA FCF
+
             with tab_fcf:
                 st.subheader("Evolução dos Fluxos de Caixa")
                 fcf_items_chart = [item for item in ['Operating Cash Flow', 'Investing Cash Flow', 'Financing Cash Flow', 'Free Cash Flow'] if item in cash_flow.index]
                 plot_financial_statement(cash_flow[cash_flow.index.isin(fcf_items_chart)], "Fluxo de Caixa Anual (Resumo)")
-            
                 with st.expander("Visualizar Fluxo de Caixa (FCF) completo"):
                     df_fcf = cash_flow.copy()
                     df_fcf = reorder_financial_statement(df_fcf, FCF_ORDER)
                     df_fcf.dropna(how='all', inplace=True)
                     df_fcf.columns = df_fcf.columns.year
-                    df_fcf_formatted = df_fcf.applymap(formatar_numero)
+                    df_fcf_formatted = df_fcf.apply(lambda x: x.map(formatar_numero))
                     st.dataframe(df_fcf_formatted, use_container_width=True)
+
             with tab_dupont:
                 st.subheader("Decomposição do ROE (Return on Equity)")
                 dupont_df = calculate_dupont_analysis(income_statement, balance_sheet)
@@ -351,20 +326,21 @@ if st.session_state.analysis_run:
                     df_plot = dupont_df.T.sort_index(); df_plot.index = df_plot.index.year
                     fig_dupont = px.line(df_plot, markers=True, title="Evolução dos Componentes do ROE"); st.plotly_chart(fig_dupont, use_container_width=True)
                 else: st.warning("Não foi possível calcular a Análise DuPont.")
+            
             with tab_ratios:
                 st.subheader("Análise de Indicadores Financeiros Chave")
                 ratios_df = calculate_financial_ratios(income_statement, balance_sheet)
                 if not ratios_df.empty:
                     df_plot_ratios = ratios_df.T.sort_index(); df_plot_ratios.index = df_plot_ratios.index.year
-                    col1, col2 = st.columns(2)
+                    col1_r, col2_r = st.columns(2)
                     if 'Liquidez Corrente' in df_plot_ratios.columns:
-                        with col1: st.metric("Liquidez Corrente (x)", f"{df_plot_ratios['Liquidez Corrente'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Liquidez Corrente', title='Evolução da Liquidez Corrente', markers=True), use_container_width=True)
+                        with col1_r: st.metric("Liquidez Corrente (x)", f"{df_plot_ratios['Liquidez Corrente'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Liquidez Corrente', title='Evolução da Liquidez Corrente', markers=True), use_container_width=True)
                     if 'Dívida / Patrimônio' in df_plot_ratios.columns:
-                        with col2: st.metric("Dívida / Patrimônio (x)", f"{df_plot_ratios['Dívida / Patrimônio'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Dívida / Patrimônio', title='Evolução do Endividamento', markers=True), use_container_width=True)
+                        with col2_r: st.metric("Dívida / Patrimônio (x)", f"{df_plot_ratios['Dívida / Patrimônio'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Dívida / Patrimônio', title='Evolução do Endividamento', markers=True), use_container_width=True)
                     if 'Margem Operacional (%)' in df_plot_ratios.columns:
-                        with col1: st.metric("Margem Operacional (%)", f"{df_plot_ratios['Margem Operacional (%)'].iloc[-1]:.2f}%"); st.plotly_chart(px.line(df_plot_ratios, y='Margem Operacional (%)', title='Evolução da Margem Operacional', markers=True), use_container_width=True)
+                        with col1_r: st.metric("Margem Operacional (%)", f"{df_plot_ratios['Margem Operacional (%)'].iloc[-1]:.2f}%"); st.plotly_chart(px.line(df_plot_ratios, y='Margem Operacional (%)', title='Evolução da Margem Operacional', markers=True), use_container_width=True)
                     if 'Giro do Ativo' in df_plot_ratios.columns:
-                        with col2: st.metric("Giro do Ativo (x)", f"{df_plot_ratios['Giro do Ativo'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Giro do Ativo', title='Evolução do Giro do Ativo', markers=True), use_container_width=True)
+                        with col2_r: st.metric("Giro do Ativo (x)", f"{df_plot_ratios['Giro do Ativo'].iloc[-1]:.2f}"); st.plotly_chart(px.line(df_plot_ratios, y='Giro do Ativo', title='Evolução do Giro do Ativo', markers=True), use_container_width=True)
                 else: st.warning("Dados insuficientes para calcular os ratios financeiros.")
             
             st.header("Análise Comparativa de Múltiplos (Comps)")
@@ -402,59 +378,34 @@ if st.session_state.analysis_run:
                         else: st.error("Não foi possível calcular. Verifique se WACC > Perpetuidade e se há Preço Atual.")
                     else: st.error("Dados financeiros não carregados. Impossível rodar o DCF.")
 
-            # SUBSTITUA A SEÇÃO DE HISTÓRICO DE COTAÇÕES POR ESTE BLOCO
-
             st.header("Histórico de Cotações")
             try:
                 hist_df = yf.Ticker(ticker_symbol).history(period="5y")
-                
-                # Verifica se o dataframe retornado está vazio
                 if hist_df.empty:
                     st.warning(f"Não foi possível obter o histórico de cotações para o ticker {ticker_symbol}.")
                 else:
-                    # Se os dados foram obtidos, plota o gráfico
                     fig_price = px.line(hist_df, y="Close", title=f"Preço de Fechamento de {info['shortName']}")
                     st.plotly_chart(fig_price, use_container_width=True)
-            
             except Exception as e:
-                # Se ocorrer qualquer outro erro na chamada do yfinance, exibe uma mensagem
                 st.error(f"Ocorreu um erro ao buscar o histórico de cotações: {e}")
 
-            # SUBSTITUA A SEÇÃO DE NOTÍCIAS INTEIRA POR ESTE BLOCO
-
-            # SUBSTITUA A SEÇÃO DE NOTÍCIAS POR ESTE BLOCO DE DEPURAÇÃO
-
-            # SUBSTITUA O BLOCO DE TESTE POR ESTE CÓDIGO FINAL
-
             st.header("Notícias Recentes e Análise de Sentimento")
-            # Adicionamos uma nota ao usuário sobre a instabilidade da fonte de dados
             st.caption("Nota: A busca de notícias da fonte de dados pode ser instável e não funcionar para todos os ativos.")
-            
             try:
-                # 1. Fazemos a chamada real à API
                 news = yf.Ticker(ticker_symbol).news
-                
-                # 2. Verificamos se a chamada retornou uma lista vazia
                 if not news:
                     st.info("A busca por notícias não retornou resultados para este ativo.")
                 else:
-                    # 3. Se houver notícias, exibimos
                     for item in news[:5]: 
                         titulo = item.get('title')
-                        if not titulo:
-                            continue
-                        
+                        if not titulo: continue
                         publisher = item.get('publisher', 'Não Informado')
                         link = item.get('link')
                         sentimento, icone = analisar_sentimento(titulo)
-                        
                         with st.expander(f"{icone} {titulo}"):
                             st.markdown(f"**Publicado por:** {publisher} | **Sentimento:** {sentimento}")
-                            if link:
-                                st.link_button("Ler notícia completa", link)
-            
+                            if link: st.link_button("Ler notícia completa", link)
             except Exception as e:
-                # 4. Se qualquer outro erro ocorrer, nós o capturamos e exibimos
                 st.warning(f"Ocorreu um erro ao tentar carregar as notícias: {e}")
 else:
     st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa.")
