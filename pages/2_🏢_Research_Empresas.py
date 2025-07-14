@@ -76,6 +76,61 @@ def calculate_dupont_analysis(income_stmt, balance_sheet):
         return pd.DataFrame({'Margem Líquida (%)': net_profit_margin, 'Giro do Ativo': asset_turnover, 'Alavancagem Financeira': financial_leverage, 'ROE Calculado (%)': roe}).T.sort_index(axis=1)
     except KeyError: return pd.DataFrame()
 
+@st.cache_data
+def calculate_financial_ratios(income_stmt, balance_sheet):
+    """
+    Calcula um conjunto de ratios financeiros chave a partir dos demonstrativos.
+    Retorna um DataFrame com os ratios calculados ao longo do tempo.
+    """
+    # Usamos o método .get(key, None) para evitar erros se uma linha não existir
+    ratios = {}
+    try:
+        # Liquidez Corrente = Ativo Circulante / Passivo Circulante
+        current_assets = balance_sheet.loc['Current Assets']
+        current_liabilities = balance_sheet.loc['Current Liabilities']
+        ratios['Liquidez Corrente'] = current_assets / current_liabilities
+    except KeyError:
+        # Pula o cálculo se os dados não estiverem disponíveis
+        pass 
+
+    try:
+        # Dívida / Patrimônio = Dívida Total / Patrimônio Líquido
+        # 'Total Debt' é o campo mais confiável, mas nem sempre presente.
+        if 'Total Debt' in balance_sheet.index:
+            total_debt = balance_sheet.loc['Total Debt']
+        else:
+            # Uma aproximação caso 'Total Debt' não exista
+            total_debt = balance_sheet.loc['Total Liabilities Net Minority Interest']
+            
+        equity = balance_sheet.loc['Stockholders Equity']
+        ratios['Dívida / Patrimônio'] = total_debt / equity
+    except KeyError:
+        pass
+
+    try:
+        # Margem Operacional (%) = Lucro Operacional / Receita Total
+        op_income = income_stmt.loc['Operating Income']
+        revenue = income_stmt.loc['Total Revenue']
+        ratios['Margem Operacional (%)'] = (op_income / revenue) * 100
+    except KeyError:
+        pass
+
+    try:
+        # Giro do Ativo = Receita Total / Ativo Total
+        revenue = income_stmt.loc['Total Revenue']
+        total_assets = balance_sheet.loc['Total Assets']
+        ratios['Giro do Ativo'] = revenue / total_assets
+    except KeyError:
+        pass
+
+    if not ratios:
+        return pd.DataFrame() # Retorna DF vazio se nenhum ratio foi calculado
+
+    # Converte o dicionário para DataFrame e transpõe para ter os anos nas colunas
+    ratios_df = pd.DataFrame(ratios).T
+    # Garante que as colunas (anos) estejam em ordem crescente
+    return ratios_df.sort_index(axis=1)
+
 def calculate_quality_score(info, dcf_data):
     scores = {}
     roe = info.get('returnOnEquity', 0) or 0
@@ -231,7 +286,7 @@ if analyze_button:
             income_statement = ticker_obj.income_stmt
             balance_sheet = ticker_obj.balance_sheet
             cash_flow = ticker_obj.cashflow
-            tab_dre, tab_bp, tab_fcf, tab_dupont = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont"])
+            tab_dre, tab_bp, tab_fcf, tab_dupont, tab_ratios = st.tabs(["Resultados (DRE)", "Balanço (BP)", "Fluxo de Caixa (FCF)", "🔥 Análise DuPont", "📊 Ratios Financeiros"])
             with tab_dre:
                 st.subheader("Evolução da Receita e Lucro"); dre_items = ['Total Revenue', 'Gross Profit', 'Operating Income', 'Net Income']
                 dre_df = income_statement[income_statement.index.isin(dre_items)]; plot_financial_statement(dre_df, "Demonstração de Resultados Anual")
@@ -252,6 +307,52 @@ if analyze_button:
                     fig_dupont.update_layout(xaxis_title="Ano", yaxis_title="Valor / Múltiplo", legend_title="Componentes"); st.plotly_chart(fig_dupont, use_container_width=True)
                     st.caption("ROE = (Margem Líquida) x (Giro do Ativo) x (Alavancagem Financeira)")
                 else: st.warning("Não foi possível calcular a Análise DuPont.")
+            with tab_ratios:
+                st.subheader("Análise de Indicadores Financeiros Chave")
+                # Chama a nova função para calcular os ratios
+                ratios_df = calculate_financial_ratios(income_statement, balance_sheet)
+
+                if not ratios_df.empty:
+                    # Prepara o dataframe para plotagem
+                    df_plot_ratios = ratios_df.T.sort_index()
+                    df_plot_ratios.index = df_plot_ratios.index.year
+
+                    # Layout em duas colunas para melhor visualização
+                    col1, col2 = st.columns(2)
+
+                    # --- Ratio 1: Liquidez Corrente ---
+                    if 'Liquidez Corrente' in df_plot_ratios.columns:
+                        with col1:
+                            latest_liquidez = df_plot_ratios['Liquidez Corrente'].iloc[-1]
+                            st.metric("Liquidez Corrente (x)", f"{latest_liquidez:.2f}")
+                            fig = px.line(df_plot_ratios, y='Liquidez Corrente', title='Evolução da Liquidez Corrente', markers=True, labels={'value': 'Índice (x)', 'index': 'Ano'})
+                            st.plotly_chart(fig, use_container_width=True)
+                    
+                    # --- Ratio 2: Dívida / Patrimônio ---
+                    if 'Dívida / Patrimônio' in df_plot_ratios.columns:
+                        with col2:
+                            latest_divida = df_plot_ratios['Dívida / Patrimônio'].iloc[-1]
+                            st.metric("Dívida / Patrimônio (x)", f"{latest_divida:.2f}")
+                            fig = px.line(df_plot_ratios, y='Dívida / Patrimônio', title='Evolução do Endividamento', markers=True, labels={'value': 'Índice (x)', 'index': 'Ano'})
+                            st.plotly_chart(fig, use_container_width=True)
+
+                    # --- Ratio 3: Margem Operacional ---
+                    if 'Margem Operacional (%)' in df_plot_ratios.columns:
+                        with col1:
+                            latest_margem = df_plot_ratios['Margem Operacional (%)'].iloc[-1]
+                            st.metric("Margem Operacional (%)", f"{latest_margem:.2f}%")
+                            fig = px.line(df_plot_ratios, y='Margem Operacional (%)', title='Evolução da Margem Operacional', markers=True, labels={'value': 'Margem (%)', 'index': 'Ano'})
+                            st.plotly_chart(fig, use_container_width=True)
+                    
+                    # --- Ratio 4: Giro do Ativo ---
+                    if 'Giro do Ativo' in df_plot_ratios.columns:
+                        with col2:
+                            latest_giro = df_plot_ratios['Giro do Ativo'].iloc[-1]
+                            st.metric("Giro do Ativo (x)", f"{latest_giro:.2f}")
+                            fig = px.line(df_plot_ratios, y='Giro do Ativo', title='Evolução do Giro do Ativo', markers=True, labels={'value': 'Índice (x)', 'index': 'Ano'})
+                            st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("Dados insuficientes para calcular os ratios financeiros desta empresa.")
             
             st.header("Análise Comparativa de Múltiplos (Comps)")
             if peers_string:
