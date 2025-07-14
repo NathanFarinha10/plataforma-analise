@@ -315,17 +315,35 @@ if st.session_state.analysis_run:
             hist_df = yf.Ticker(ticker_symbol).history(period="5y")
             st.plotly_chart(px.line(hist_df, y="Close", title=f"Preço de Fechamento de {info['shortName']}"), use_container_width=True)
 
+            # SUBSTITUA A SEÇÃO DE NOTÍCIAS INTEIRA POR ESTE BLOCO
+
             st.header("Notícias Recentes e Análise de Sentimento")
-            news = yf.Ticker(ticker_symbol).news
-            if news:
-                for item in news[:5]: # Limita a 5 notícias para não poluir a tela
-                    titulo = item.get('title')
-                    if not titulo: continue
-                    publisher = item.get('publisher', 'Não Informado')
-                    link = item.get('link'); sentimento, icone = analisar_sentimento(titulo)
-                    with st.expander(f"{icone} {titulo}"):
-                        st.markdown(f"**Publicado por:** {publisher} | **Sentimento:** {sentimento}")
-                        if link: st.link_button("Ler notícia completa", link)
-            else: st.write("Nenhuma notícia recente encontrada.")
+            try:
+                # Tentamos buscar as notícias
+                news = yf.Ticker(ticker_symbol).news
+                
+                # Verificamos se a busca retornou uma lista vazia
+                if not news:
+                    st.info("A busca por notícias não retornou resultados para este ativo (a API pode estar indisponível ou sem cobertura).")
+                else:
+                    # Se tivermos notícias, iteramos sobre elas como antes
+                    for item in news[:5]: # Limita a 5 notícias para não poluir a tela
+                        titulo = item.get('title')
+                        # Pula para a próxima notícia se esta não tiver um título
+                        if not titulo:
+                            continue
+                        
+                        publisher = item.get('publisher', 'Não Informado')
+                        link = item.get('link')
+                        sentimento, icone = analisar_sentimento(titulo)
+                        
+                        with st.expander(f"{icone} {titulo}"):
+                            st.markdown(f"**Publicado por:** {publisher} | **Sentimento:** {sentimento}")
+                            if link:
+                                st.link_button("Ler notícia completa", link)
+            
+            except Exception as e:
+                # Capturamos qualquer outro erro que possa ocorrer e informamos o usuário
+                st.warning(f"Ocorreu um erro ao tentar carregar as notícias: {e}")
 else:
     st.info("Insira um ticker e clique em 'Analisar' para ver a análise completa.")
