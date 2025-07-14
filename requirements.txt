@@ -5,3 +5,4 @@ plotly
 yfinance
 python-bcb
 matplotlib
+numpy_financial
