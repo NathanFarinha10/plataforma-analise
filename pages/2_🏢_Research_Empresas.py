@@ -281,7 +281,7 @@ if st.session_state.analysis_run:
                 if not comps_df.empty:
                     metric_cols = ['P/L', 'P/VP', 'EV/EBITDA', 'Dividend Yield (%)', 'ROE (%)', 'Margem Bruta (%)']
                     comps_df[metric_cols] = comps_df[metric_cols].apply(pd.to_numeric, errors='coerce')
-                    st.dataframe(comps_df.set_index('Ativo').style.format("{:.2f}", na_rep="N/A"), use_container_width=True)
+                    st.dataframe(comps_df.set_index('Ativo').style.format("{:.2f}", subset=metric_cols, na_rep="N/A"), use_container_width=True)
                     col_chart1, col_chart2 = st.columns(2)
                     with col_chart1: st.plotly_chart(px.bar(comps_df, x='Ativo', y='P/L', title='Comparativo de P/L', text_auto='.2f'), use_container_width=True)
                     with col_chart2: st.plotly_chart(px.bar(comps_df, x='Ativo', y='EV/EBITDA', title='Comparativo de EV/EBITDA', text_auto='.2f'), use_container_width=True)
