@@ -151,6 +151,38 @@ def generate_narrative(scores, info):
         
     return narrative
 
+@st.cache_data
+def analyze_growth(income_stmt, info):
+    """Gera uma análise narrativa sobre o crescimento da receita."""
+    try:
+        # Pega a série histórica de receitas e ordena do mais antigo para o mais novo
+        revenue_series = income_stmt.loc['Total Revenue'].sort_index()
+        
+        # Calcula o CAGR (Taxa de Crescimento Anual Composta) dos últimos anos
+        start_value = revenue_series.iloc[0]
+        end_value = revenue_series.iloc[-1]
+        num_years = len(revenue_series) - 1
+        
+        if start_value > 0 and num_years > 0:
+            cagr = ((end_value / start_value) ** (1 / num_years)) - 1
+        else:
+            cagr = 0
+
+        # Pega a estimativa de crescimento de receita do próximo ano (se disponível)
+        analyst_growth_estimate = info.get('revenueGrowth', None)
+
+        # Constrói a narrativa
+        narrative = f"A companhia demonstrou um crescimento de receita histórico de **{cagr:.2%} ao ano** nos últimos {num_years+1} anos, passando de {start_value/1e9:.2f}B para {end_value/1e9:.2f}B. "
+        
+        if analyst_growth_estimate is not None:
+            narrative += f"A expectativa de crescimento para o próximo ano, segundo o consenso de analistas, é de **{analyst_growth_estimate:.2%}**, indicando uma potencial {'aceleração' if analyst_growth_estimate > cagr else 'desaceleração'} em relação ao ritmo histórico."
+        else:
+            narrative += "Não há estimativas claras do consenso de analistas para o crescimento futuro da receita."
+            
+        return narrative
+    except Exception:
+        return "Não foi possível gerar a análise de crescimento de receita. Dados históricos podem estar incompletos."
+
 def calculate_value_score(info, comps_df, dcf_upside):
     scores = {}
     pe = info.get('trailingPE')
@@ -286,6 +318,16 @@ if analyze_button:
             with col3: st.metric("P/L", f"{info.get('trailingPE', 0):.2f}"); st.metric("P/VP", f"{info.get('priceToBook', 0):.2f}")
             with col4: st.metric("Dividend Yield", f"{info.get('dividendYield', 0) * 100:.2f}%"); st.metric("Beta", f"{info.get('beta', 0):.2f}")
             with st.expander("Descrição da Empresa"): st.write(info.get('longBusinessSummary', 'Descrição não disponível.'))
+           
+            # --- CAPÍTULO: CRESCIMENTO DE RECEITA ---
+            st.subheader("Crescimento de Receita")
+            with st.spinner("Analisando tendências de receita..."):
+                # Reutiliza o DRE já buscado para a análise histórica
+                income_statement_data = yf.Ticker(ticker_symbol).income_stmt
+                growth_narrative = analyze_growth(income_statement_data, info)
+                st.write(growth_narrative)
+            
+            st.divider()
 
             st.header("Análise Financeira Histórica e DuPont")
             ticker_obj = yf.Ticker(ticker_symbol)
