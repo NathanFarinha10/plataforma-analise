@@ -9,6 +9,9 @@ import numpy as np
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
 
+if 'analysis_run' not in st.session_state:
+    st.session_state.analysis_run = False
+
 # --- FUNÇÕES AUXILIARES ---
 def analisar_sentimento(texto):
     texto = texto.lower()
@@ -214,9 +217,14 @@ st.markdown("Analise ações individuais, compare com pares e calcule o valor in
 st.sidebar.header("Filtros de Análise"); ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
 peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
 
-analyze_button = st.sidebar.button("Analisar")
+# Quando o botão for clicado, ele liga a nossa variável de estado
+if st.sidebar.button("Analisar"):
+    st.session_state.analysis_run = True
 
-if analyze_button:
+if st.session_state.analysis_run:
+    ticker_symbol = st.sidebar.text_input("Ticker Principal", "AAPL").upper()
+    peers_string = st.sidebar.text_area("Tickers dos Concorrentes (para Comps)", "MSFT, GOOG, AMZN").upper()
+    
     if not ticker_symbol:
         st.warning("Por favor, digite um ticker principal para analisar.")
     else:
