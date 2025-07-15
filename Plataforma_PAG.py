@@ -12,12 +12,12 @@ st.set_page_config(page_title="Plataforma PAG", page_icon="📈", layout="wide")
 with open('config.yaml') as file:
     config = yaml.load(file, Loader=SafeLoader)
 
+# Bloco corrigido
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
     config['cookie']['key'],
-    config['cookie']['expiry_days'],
-    config['preauthorized']
+    config['cookie']['expiry_days']
 )
 
 # Renderiza o formulário de login no centro da página
