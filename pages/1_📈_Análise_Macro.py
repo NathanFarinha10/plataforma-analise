@@ -116,7 +116,7 @@ tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unido
 # --- ABA BRASIL ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
-    subtab_br_activity, subtab_br_inflation, subtab_br_bc, subtab_br_big_players = st.tabs(["Atividade e Emprego", "Inflação e Juros", "Visão do BCB"])
+    subtab_br_activity, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade e Emprego", "Inflação e Juros", "Visão do BCB"])
     
     with subtab_br_activity:
         st.subheader("Atividade Econômica")
@@ -143,7 +143,7 @@ with tab_br:
 # --- ABA EUA ---
 with tab_us:
     st.header("Principais Indicadores dos Estados Unidos")
-    subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_bc, subtab_us_big_players = st.tabs(["Atividade", "Inflação", "Curva de Juros", "Visão do Fed"])
+    subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_bc = st.tabs(["Atividade", "Inflação", "Curva de Juros", "Visão do Fed"])
     
     with subtab_us_activity:
         st.subheader("Atividade Econômica")
