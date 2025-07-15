@@ -12,6 +12,8 @@ import numpy_financial as npf
 # --- Configuração da Página ---
 st.set_page_config(page_title="Análise de Renda Fixa", page_icon="💰", layout="wide")
 
+st.sidebar.image("logo.png", use_container_width=True)
+
 # --- INICIALIZAÇÃO DAS APIS ---
 @st.cache_resource
 def get_fred_api():
