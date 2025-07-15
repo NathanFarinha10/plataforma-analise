@@ -24,15 +24,15 @@ authenticator = stauth.Authenticate(
 name, authentication_status, username = authenticator.login('main')
 
 # --- CONTROLE DE ACESSO ---
+# Bloco corrigido
+authenticator.login()
+
 if st.session_state["authentication_status"]:
-    # Se o login for bem-sucedido, mostra o conteúdo principal e o menu
-    
-    # Barra lateral com saudação e botão de logout
+    # Se o login for bem-sucedido, o conteúdo é exibido
     with st.sidebar:
         st.write(f'Bem-vindo(a), *{st.session_state["name"]}*')
         authenticator.logout('Logout', 'main')
 
-    # Conteúdo principal da página de boas-vindas
     st.title("Bem-vindo à Plataforma de Análise da Gestora (PAG)")
     st.markdown("---")
     st.header("Navegue pelas nossas ferramentas de análise no menu à esquerda.")
@@ -49,3 +49,4 @@ elif st.session_state["authentication_status"] is False:
     st.error('Usuário/senha incorreto(a)')
 elif st.session_state["authentication_status"] is None:
     st.warning('Por favor, insira seu usuário e senha')
+
