@@ -84,6 +84,8 @@ def calculate_portfolio_risk(prices, weights):
 
 # ADICIONE ESTA NOVA FUNÇÃO JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
 
+# SUBSTITUA A FUNÇÃO ANTERIOR POR ESTA VERSÃO CORRIGIDA
+
 @st.cache_data(ttl=86400) # Cache de 1 dia para dados de backtest
 def run_backtest(portfolio_df, period="3y"):
     """
@@ -100,19 +102,16 @@ def run_backtest(portfolio_df, period="3y"):
         if prices.empty:
             return None
 
-        returns = prices.pct_change().dropna()
+        # --- LÓGICA CORRIGIDA ---
+        # Chama a função de risco UMA VEZ e desempacota os 3 resultados
+        annualized_return, annualized_vol, sharpe_ratio = calculate_portfolio_risk(prices, weights)
         
-        # Calcula o retorno diário da carteira
-        portfolio_daily_returns = (returns * weights).sum(axis=1)
-        
-        # Calcula o retorno acumulado
+        # Calcula o retorno acumulado separadamente
+        portfolio_daily_returns = (prices.pct_change().dropna() * weights).sum(axis=1)
         cumulative_returns = (1 + portfolio_daily_returns).cumprod()
+        total_return = cumulative_returns.iloc[-1] - 1
         
-        # Calcula as métricas de performance
-        total_return = (cumulative_returns.iloc[-1] - 1)
-        annualized_return = p_return, _, _ = calculate_portfolio_risk(prices, weights)
-        _, annualized_vol, sharpe_ratio = calculate_portfolio_risk(prices, weights)
-        
+        # Retorna um dicionário com cada métrica sendo um único número
         return {
             "cumulative_returns": cumulative_returns,
             "total_return": total_return,
