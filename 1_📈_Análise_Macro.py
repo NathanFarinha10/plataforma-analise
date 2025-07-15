@@ -35,8 +35,21 @@ def fetch_fred_series(code, start_date):
 
 @st.cache_data(ttl=3600)
 def fetch_bcb_series(code, start_date):
-    """Busca uma única série do BCB SGS."""
-    return sgs.get({code: code}, start=start_date)[code]
+    """Busca uma única série do BCB SGS de forma robusta."""
+    try:
+        # Tenta buscar os dados
+        df = sgs.get({str(code): code}, start=start_date)
+        
+        # Verifica se o dataframe não está vazio e se a coluna esperada existe
+        if not df.empty and str(code) in df.columns:
+            return df[str(code)] # Retorna a série de dados
+        else:
+            # Se não encontrar, retorna uma Série vazia para evitar erros
+            return pd.Series(dtype='float64')
+            
+    except Exception:
+        # Em caso de qualquer outro erro na API, também retorna uma série vazia
+        return pd.Series(dtype='float64')
 
 @st.cache_data(ttl=86400)
 def fetch_market_data(tickers, period="5y"):
