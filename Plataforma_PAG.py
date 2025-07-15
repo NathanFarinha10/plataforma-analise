@@ -7,6 +7,8 @@ import time
 # --- Configuração da Página ---
 st.set_page_config(page_title="Plataforma PAG", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
+st.sidebar.image("logo.png", use_container_width=True)
+
 # --- LÓGICA DA TELA DE SPLASH ---
 # Usamos o session_state para garantir que a splash screen só apareça uma vez por sessão.
 if 'splash_screen_done' not in st.session_state:
