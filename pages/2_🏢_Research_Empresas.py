@@ -11,6 +11,8 @@ from datetime import date
 # --- CONFIGURAÇÕES E CONSTANTES ---
 st.set_page_config(page_title="PAG | Research de Empresas", page_icon="🏢", layout="wide")
 
+st.sidebar.image("logo.png", use_container_width=True)
+
 # LISTAS DE ORDENAÇÃO PARA DEMONSTRATIVOS FINANCEIROS
 DRE_ORDER = [
     'Total Revenue', 'Cost Of Revenue', 'Gross Profit', 'Operating Expense',
