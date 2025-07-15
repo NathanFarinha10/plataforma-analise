@@ -5,11 +5,11 @@ credentials:
     jsilva:
       email: j.silva@suagestora.com
       name: João Silva (Advisor)
-      password: 'XXX' # Substitua pela senha criptografada
+      password: '12345' # Substitua pela senha criptografada
     aoliveira:
       email: a.oliveira@suagestora.com
       name: Ana Oliveira (Analista)
-      password: 'YYY' # Substitua pela senha criptografada
+      password: '12345' # Substitua pela senha criptografada
 cookie:
   expiry_days: 30
   key: 'alguma_chave_secreta_aleatoria' # Chave para o cookie de login
