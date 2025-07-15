@@ -595,6 +595,51 @@ if st.session_state.analysis_run:
                         df_cashflow = pd.DataFrame({'Data Projetada': cashflow_dates, 'Pagamento': cashflows})
                         df_cashflow['Data Projetada'] = df_cashflow['Data Projetada'].dt.strftime('%Y-%m-%d')
                         st.dataframe(df_cashflow.style.format({'Pagamento': '{:,.2f}'}), use_container_width=True)
+
+                        # --- SEÇÃO DE CONEXÃO: CONTEXTO DE CRÉDITO DA EMPRESA EMISSORA ---
+                        st.divider()
+                        st.subheader(f"Contexto de Crédito da Empresa Emissora ({info.get('shortName', 'N/A')})")
+                        
+                        # Verifica se os dados de crédito da empresa principal foram calculados com sucesso
+                        if credit_data:
+                            # Extrai os dados de crédito da empresa que já foram calculados
+                            company_credit_score = credit_data.get('PAG Credit Score')
+                            company_debt_ebitda = credit_data.get('Dívida Líquida / EBITDA')
+                            company_coverage = credit_data.get('EBIT / Juros')
+                        
+                            # Determina o rating com base no score
+                            if company_credit_score is not None:
+                                if company_credit_score >= 85: rating, emoji = "Baixo Risco", "🛡️"
+                                elif company_credit_score >= 60: rating, emoji = "Risco Moderado", "⚠️"
+                                else: rating, emoji = "Alto Risco", "🚨"
+                            
+                            st.info(f"A seguir, um resumo da análise de crédito fundamental para a {info['shortName']}. Compare se o retorno do título acima é adequado ao risco da empresa.")
+                        
+                            col_context1, col_context2, col_context3 = st.columns(3)
+                            
+                            with col_context1:
+                                if company_credit_score is not None:
+                                    st.metric(
+                                        label="PAG Credit Score da Empresa",
+                                        value=f"{rating} {emoji}",
+                                        delta=f"{company_credit_score:.0f} / 100",
+                                        delta_color="off",
+                                        help="Score proprietário que avalia a saúde de crédito da empresa com base em sua alavancagem e cobertura de juros."
+                                    )
+                        
+                            with col_context2:
+                                if company_debt_ebitda is not None and not company_debt_ebitda.empty:
+                                    st.metric(label="Alavancagem (Dív. Líq./EBITDA)", value=f"{company_debt_ebitda.iloc[-1]:.2f}x")
+                        
+                            with col_context3:
+                                if company_coverage is not None and not company_coverage.empty:
+                                    st.metric(label="Cobertura de Juros (EBIT/Juros)", value=f"{company_coverage.iloc[-1]:.2f}x")
+                                    
+                            st.caption(f"Para uma análise mais detalhada da empresa, consulte a aba '🩺 Análise de Dívida'.")
+                        
+                        else:
+                            # Mensagem caso os dados de crédito da empresa principal não estejam disponíveis
+                            st.warning(f"Não foi possível carregar o resumo da análise de crédito para {info['shortName']}. Verifique se a empresa possui os dados financeiros necessários na aba 'Análise de Dívida'.")
             
                         st.header("Análise Comparativa de Múltiplos (Comps)")
                         if peers_string:
