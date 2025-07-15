@@ -11,6 +11,8 @@ import time
 # --- Configuração da Página ---
 st.set_page_config(page_title="Wealth Management - Alocação", page_icon="💼", layout="wide")
 
+st.sidebar.image("logo.png", use_container_width=True)
+
 # --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
 if 'client_profile' not in st.session_state: st.session_state.client_profile = "Balanceado"
 if 'backtest_results' not in st.session_state: st.session_state.backtest_results = None
