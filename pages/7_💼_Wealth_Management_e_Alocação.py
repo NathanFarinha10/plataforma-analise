@@ -88,6 +88,55 @@ def create_allocation_chart(portfolio_name, data):
     )
     return fig
 
+# ADICIONE ESTAS TRÊS FUNÇÕES JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
+
+@st.cache_data
+def get_portfolio_price_data(tickers_list, period="3y"):
+    """Baixa os dados de preços de fechamento para uma lista de tickers."""
+    try:
+        data = yf.download(tickers_list, period=period, progress=False)['Close']
+        return data.dropna()
+    except Exception:
+        return pd.DataFrame()
+
+@st.cache_data
+def categorize_ticker(ticker_symbol):
+    """Classifica um ticker em uma das 7 classes de ativos com base em heurísticas."""
+    try:
+        info = yf.Ticker(ticker_symbol).info
+        category = info.get('quoteType', '').upper()
+        fund_family = info.get('fundFamily', '').upper()
+
+        if category == 'EQUITY':
+            return "Ações Brasil" if '.SA' in ticker_symbol.upper() else "Ações Internacional"
+        
+        if category == 'ETF':
+            long_name = info.get('longName', '').upper()
+            if any(term in long_name for term in ['FIXA', 'BOND', 'TREASURY']):
+                return "Renda Fixa Internacional" if '.SA' not in ticker_symbol.upper() else "Renda Fixa Brasil"
+            if any(term in long_name for term in ['FII', 'IMOBILIÁRIO', 'REAL ESTATE']):
+                return "Fundos Imobiliários"
+            if any(term in long_name for term in ['GOLD', 'OURO', 'COMMODITIES']):
+                return "Alternativos"
+            if any(term in long_name for term in ['IBOVESPA', 'SMALL', 'BRAZIL']):
+                 return "Ações Brasil"
+            return "Ações Internacional"
+        
+        return "Alternativos" # Default para tipos não reconhecidos
+    except Exception:
+        return "Não Classificado"
+
+def calculate_portfolio_risk(prices, weights):
+    """Calcula o risco e retorno anualizado de uma carteira."""
+    if prices.empty or len(prices) < 252:
+        return 0, 0, 0 # Retorna 0 se não houver dados suficientes
+        
+    returns = prices.pct_change().dropna()
+    p_return = np.sum(returns.mean() * weights) * 252
+    p_vol = np.sqrt(np.dot(weights.T, np.dot(returns.cov() * 252, weights)))
+    p_sharpe = p_return / p_vol if p_vol > 0 else 0
+    return p_return, p_vol, p_sharpe
+
 # --- INTERFACE DA APLICAÇÃO ---
 
 st.title("💼 Painel de Wealth Management e Alocação Estratégica")
@@ -157,6 +206,77 @@ if selected_class:
                     yahoo_finance_link = f"https://finance.yahoo.com/quote/{asset['ticker']}"
                     st.link_button("Ver no Yahoo Finance", yahoo_finance_link)
 
-            st.divider()
+          # COLE ESTA NOVA SEÇÃO NO FINAL DO SEU ARQUIVO
 
-st.success("✅ **Fase 2 Concluída:** Detalhamento dos 'Building Blocks' implementado. O próximo passo será a ferramenta de análise de carteira do cliente (Fase 3).")
+st.divider()
+
+# --- FASE 3: ANALISADOR DE CARTEIRA DO CLIENTE ---
+st.subheader("Analisador de Carteira do Cliente")
+st.markdown("Cole a carteira do cliente abaixo para analisá-la em relação aos nossos portfólios modelo.")
+
+col_input1, col_input2 = st.columns([2,1])
+
+with col_input1:
+    portfolio_input = st.text_area(
+        "Insira a carteira do cliente (um ativo por linha, formato: TICKER,VALOR)",
+        "IVV,50000\nBOVA11.SA,30000\nBNDW,20000\nHGLG11.SA,10000",
+        height=200
+    )
+with col_input2:
+    model_to_compare = st.selectbox(
+        "Selecione o Portfólio Modelo para Comparação:",
+        options=list(portfolio_data.keys())
+    )
+    analyze_client_button = st.button("Analisar Carteira do Cliente", use_container_width=True)
+
+if analyze_client_button:
+    try:
+        # --- Processamento e Análise dos Inputs ---
+        lines = [line.strip() for line in portfolio_input.strip().split('\n') if line.strip()]
+        if not lines:
+            st.warning("Por favor, insira os dados da carteira.")
+        else:
+            with st.spinner("Analisando carteira do cliente..."):
+                portfolio_list = []
+                for line in lines:
+                    ticker, value = line.split(',')
+                    portfolio_list.append({'ticker': ticker.strip().upper(), 'value': float(value)})
+                
+                client_df = pd.DataFrame(portfolio_list)
+                total_value = client_df['value'].sum()
+                client_df['weight'] = client_df['value'] / total_value
+                
+                # Categoriza cada ativo
+                client_df['asset_class'] = client_df['ticker'].apply(categorize_ticker)
+                
+                # Agrupa por classe de ativo
+                client_allocation = client_df.groupby('asset_class')['weight'].sum() * 100
+                
+                # --- Análise de Risco ---
+                tickers = client_df['ticker'].tolist()
+                weights = client_df['weight'].values
+                price_data = get_portfolio_price_data(tickers)
+                p_return, p_vol, p_sharpe = calculate_portfolio_risk(price_data, weights)
+                
+                # --- Exibição dos Resultados ---
+                st.markdown("##### Análise da Alocação")
+                col_chart1, col_chart2 = st.columns(2)
+                
+                with col_chart1:
+                    fig_client = create_allocation_chart("Alocação Atual do Cliente", client_allocation)
+                    st.plotly_chart(fig_client, use_container_width=True)
+
+                with col_chart2:
+                    fig_model = create_allocation_chart(f"Modelo {model_to_compare}", portfolio_data[model_to_compare])
+                    st.plotly_chart(fig_model, use_container_width=True)
+                
+                st.markdown("##### Métricas de Risco da Carteira do Cliente")
+                risk1, risk2, risk3 = st.columns(3)
+                risk1.metric("Retorno Anualizado", f"{p_return*100:.2f}%")
+                risk2.metric("Volatilidade Anualizada", f"{p_vol*100:.2f}%")
+                risk3.metric("Índice de Sharpe", f"{p_sharpe:.2f}")
+
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao analisar a carteira. Verifique o formato dos dados. Erro: {e}")
+        
+st.success("✅ **Fase 3 Concluída:** Ferramenta de Análise de Carteira do Cliente implementada.")
