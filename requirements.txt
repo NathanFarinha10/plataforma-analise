@@ -6,3 +6,4 @@ yfinance
 python-bcb
 matplotlib
 numpy-financial
+streamlit-authenticator
