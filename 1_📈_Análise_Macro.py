@@ -179,38 +179,35 @@ with tab_global:
 
     # SUBSTITUA TODO O CONTEÚDO DENTRO DE 'with subtab_valuation:' POR ISTO
 
+    # SUBSTITUA TODO O CONTEÚDO DENTRO DE 'with subtab_valuation:' POR ISTO
+
     with subtab_valuation:
-        st.subheader("Prêmio de Risco do Equity (Equity Risk Premium - ERP)")
-        st.caption("Compara o retorno implícito da bolsa (Earnings Yield do Shiller P/E) com o retorno de um título do governo (10-Year Treasury Yield). Um prêmio alto (diferença grande entre as linhas) sugere que as ações estão atrativas em relação à renda fixa.")
+        st.subheader("Análise de Fatores: Growth vs. Value (EUA)")
+        st.caption("Este gráfico compara a performance de ETFs de Crescimento (Growth) e Valor (Value). Uma linha ascendente indica que o mercado está favorecendo empresas de crescimento, enquanto uma linha descendente indica uma preferência por empresas de valor.")
         
-        # Códigos nativos e confiáveis do FRED
-        shiller_pe_code = "SHILLER_PE_RATIO_MONTH"
-        treasury_10y_code = "DGS10"
+        # Tickers de ETFs referência para Growth e Value
+        factor_tickers = {
+            "Growth": "VUG", # Vanguard Growth ETF
+            "Value": "VTV"   # Vanguard Value ETF
+        }
         
-        # Busca os dados
-        shiller_pe_ratio = fetch_fred_series(shiller_pe_code, start_date)
-        treasury_yield = fetch_fred_series(treasury_10y_code, start_date)
+        # Busca os dados usando a função que já temos
+        factor_data = fetch_market_data(list(factor_tickers.values()))
         
-        if not shiller_pe_ratio.empty and not treasury_yield.empty:
-            # Calcula o Earnings Yield (inverso do P/E)
-            earnings_yield = (1 / shiller_pe_ratio) * 100
+        if not factor_data.empty:
+            # Calcula o ratio da performance
+            factor_data["Growth / Value Ratio"] = factor_data["VUG"] / factor_data["VTV"]
             
-            # Monta o DataFrame para o gráfico
-            df_erp = pd.DataFrame({
-                "Earnings Yield (Bolsa)": earnings_yield,
-                "Juro de 10 Anos (Renda Fixa)": treasury_yield
-            }).dropna()
-
-            fig = px.line(df_erp, title="Earnings Yield (Shiller PE) vs. Juro de 10 Anos (EUA)")
-            fig.update_layout(yaxis_title="Taxa Anual (%)", xaxis_title="Data", legend_title="Indicador")
+            # Plota o gráfico do ratio
+            fig = px.line(factor_data["Growth / Value Ratio"], title="Ratio de Performance: Growth vs. Value")
+            fig.update_layout(yaxis_title="Ratio (Preço Growth / Preço Value)", xaxis_title="Data", showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
-
-            # Gráfico do Prêmio de Risco (a diferença entre os dois)
-            df_erp["Prêmio de Risco (ERP)"] = df_erp["Earnings Yield (Bolsa)"] - df_erp["Juro de 10 Anos (Renda Fixa)"]
-            fig_premium = px.area(df_erp["Prêmio de Risco (ERP)"], title="Prêmio de Risco Histórico (ERP)")
-            fig_premium.add_hline(y=df_erp["Prêmio de Risco (ERP)"].mean(), line_dash="dash", line_color="red", annotation_text="Média Histórica")
-            fig_premium.update_layout(showlegend=False, yaxis_title="Prêmio Percentual (%)")
-            st.plotly_chart(fig_premium, use_container_width=True)
             
+            # Gráfico de performance normalizada para visualização
+            with st.expander("Ver performance normalizada de cada fator"):
+                normalized_factors = (factor_data[["VUG", "VTV"]] / factor_data[["VUG", "VTV"]].dropna().iloc[0]) * 100
+                normalized_factors.rename(columns={"VUG": "Growth", "VTV": "Value"}, inplace=True)
+                fig_norm = px.line(normalized_factors, title="Performance Normalizada (Base 100)")
+                st.plotly_chart(fig_norm, use_container_width=True)
         else:
-            st.warning("Não foi possível carregar os dados para a análise de Valuation.")
+            st.warning("Não foi possível carregar os dados para a análise de fatores.")
