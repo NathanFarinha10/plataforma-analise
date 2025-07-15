@@ -81,6 +81,49 @@ def calculate_portfolio_risk(prices, weights):
     p_sharpe = p_return / p_vol if p_vol > 0 else 0
     return p_return, p_vol, p_sharpe
 
+
+# ADICIONE ESTA NOVA FUNÇÃO JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
+
+@st.cache_data(ttl=86400) # Cache de 1 dia para dados de backtest
+def run_backtest(portfolio_df, period="3y"):
+    """
+    Executa o backtest para um portfólio, retornando a performance e métricas.
+    """
+    tickers = portfolio_df['ticker'].tolist()
+    weights = portfolio_df['weight'].values
+    
+    # Normaliza os pesos para garantir que somem 1
+    weights = weights / weights.sum()
+
+    try:
+        prices = get_portfolio_price_data(tickers, period)
+        if prices.empty:
+            return None
+
+        returns = prices.pct_change().dropna()
+        
+        # Calcula o retorno diário da carteira
+        portfolio_daily_returns = (returns * weights).sum(axis=1)
+        
+        # Calcula o retorno acumulado
+        cumulative_returns = (1 + portfolio_daily_returns).cumprod()
+        
+        # Calcula as métricas de performance
+        total_return = (cumulative_returns.iloc[-1] - 1)
+        annualized_return = p_return, _, _ = calculate_portfolio_risk(prices, weights)
+        _, annualized_vol, sharpe_ratio = calculate_portfolio_risk(prices, weights)
+        
+        return {
+            "cumulative_returns": cumulative_returns,
+            "total_return": total_return,
+            "annualized_return": annualized_return,
+            "annualized_vol": annualized_vol,
+            "sharpe_ratio": sharpe_ratio
+        }
+    except Exception as e:
+        st.error(f"Erro no backtest: {e}")
+        return None
+
 # --- INTERFACE DA APLICAÇÃO ---
 st.title("💼 Painel de Wealth Management e Alocação Estratégica")
 st.markdown("Visão geral dos Portfólios Modelo e ferramentas de análise para assessores.")
@@ -186,3 +229,95 @@ if analyze_client_button and portfolio_input.strip():
 
     except Exception as e:
         st.error(f"Ocorreu um erro ao analisar a carteira. Verifique o formato dos dados. Erro: {e}")
+
+# COLE ESTA NOVA SEÇÃO NO FINAL DO SEU ARQUIVO
+
+st.divider()
+
+# --- FASE 5: CONSTRUTOR E SIMULADOR DE PORTFÓLIOS ---
+st.subheader("🛠️ Construtor e Simulador de Portfólios")
+st.markdown("Construa uma carteira a partir dos nossos modelos, faça ajustes táticos e simule a performance histórica.")
+
+# --- Etapa 1: Seleção do Portfólio Base ---
+st.markdown("##### 1. Selecione um Portfólio Modelo como Base")
+base_model_name = st.selectbox(
+    "Escolha um modelo para começar:",
+    options=list(portfolio_data.keys()),
+    index=2, # Padrão para 'Balanceado'
+    key="base_model_selector"
+)
+
+# --- Etapa 2: Customização da Carteira ---
+st.markdown("##### 2. Visualize e Customize a Alocação")
+st.caption("A tabela abaixo é editável. Você pode alterar os pesos das classes de ativos ou os tickers dos 'building blocks'. A soma dos pesos deve ser 100%.")
+
+# Prepara o dataframe do portfólio para edição
+if base_model_name:
+    # Cria um DataFrame com os ativos e pesos do modelo selecionado
+    assets_list = []
+    model_allocation = portfolio_data[base_model_name]
+    for asset_class, weight in model_allocation.items():
+        if weight > 0:
+            # Pega o primeiro 'building block' recomendado para aquela classe
+            recommended_asset = building_blocks_data[asset_class][0]
+            assets_list.append({
+                "Classe de Ativo": asset_class,
+                "Ticker": recommended_asset['ticker'],
+                "Peso (%)": weight
+            })
+    
+    portfolio_editor_df = pd.DataFrame(assets_list)
+
+# Usa o st.data_editor para permitir a edição da carteira
+edited_portfolio_df = st.data_editor(
+    portfolio_editor_df,
+    num_rows="dynamic", # Permite adicionar/remover linhas
+    column_config={
+        "Peso (%)": st.column_config.NumberColumn(
+            "Peso (%)",
+            help="O peso do ativo na carteira. A soma total deve ser 100.",
+            min_value=0,
+            max_value=100,
+            step=1,
+            format="%d%%"
+        )
+    },
+    key="portfolio_editor"
+)
+
+# Validação dos pesos
+total_weight = edited_portfolio_df['Peso (%)'].sum()
+if not np.isclose(total_weight, 100):
+    st.warning(f"A soma dos pesos é de {total_weight:.1f}%. Por favor, ajuste para que a soma seja 100%.")
+
+# --- Etapa 3: Execução do Backtest ---
+st.markdown("##### 3. Execute o Backtest")
+if st.button("Rodar Backtest da Carteira Customizada", disabled=not np.isclose(total_weight, 100)):
+    
+    # Prepara o DataFrame para a função de backtest
+    backtest_input_df = edited_portfolio_df.copy()
+    backtest_input_df.rename(columns={"Ticker": "ticker", "Peso (%)": "weight"}, inplace=True)
+    backtest_input_df['weight'] = backtest_input_df['weight'] / 100 # Converte para decimal
+    
+    # Remove linhas com tickers não-padrão que não podem ser baixados
+    backtest_input_df = backtest_input_df[backtest_input_df['ticker'].str.match(r'^[A-Z0-9\.\^=^-]+$')]
+
+    with st.spinner("Executando simulação histórica..."):
+        backtest_results = run_backtest(backtest_input_df)
+
+    if backtest_results:
+        st.subheader("Resultados do Backtest")
+        
+        # Métricas de Performance
+        res1, res2, res3, res4 = st.columns(4)
+        res1.metric("Retorno Total no Período", f"{backtest_results['total_return']*100:.2f}%")
+        res2.metric("Retorno Anualizado", f"{backtest_results['annualized_return']*100:.2f}%")
+        res3.metric("Volatilidade Anualizada", f"{backtest_results['annualized_vol']*100:.2f}%")
+        res4.metric("Índice de Sharpe", f"{backtest_results['sharpe_ratio']:.2f}")
+        
+        # Gráfico de Performance
+        fig = px.line(backtest_results['cumulative_returns'], title="Performance Histórica da Carteira Customizada")
+        fig.update_layout(yaxis_title="Retorno Acumulado", xaxis_title="Data", yaxis_tickformat=".2%")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.error("Não foi possível executar o backtest. Verifique os tickers e tente novamente.")
