@@ -13,6 +13,11 @@ import re
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
 
+# Verifica se o usuário está logado. Se não, exibe uma mensagem e para.
+if not st.session_state.get("authentication_status"):
+    st.info("Por favor, faça o login para acessar esta página.")
+    st.stop()
+
 # --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
 if 'big_players_data' not in st.session_state:
     st.session_state.big_players_data = [] # Armazena as recomendações dos Big Players
@@ -111,25 +116,27 @@ with tab_br:
                 c3.metric("Balanço Final", bal)
     with subtab_br_big_players:
         st.subheader("Consolidado de Recomendações para o Brasil")
-        if editor_password == st.secrets.get("EDITOR_PASSWORD", "default_pass"):
-            with st.form("editor_form_br"):
-                st.markdown("#### 📝 Modo Editor: Adicionar Nova Recomendação")
-                c1,c2,c3 = st.columns(3)
-                gestora = c1.selectbox("Gestora", ["BlackRock","JP Morgan","Itaú Asset","XP Asset","BTG Pactual"], key="br_gestora")
-                classe_ativo = c2.selectbox("Classe de Ativo", ["Ações Brasil", "Renda Fixa Pré", "Inflação", "Dólar"], key="br_asset")
-                recomendacao = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True, key="br_rec")
-                link_relatorio = st.text_input("Link para o Relatório", key="br_link")
-                if st.form_submit_button("Salvar Recomendação"):
-                    st.session_state.big_players_data.append({"País": "Brasil", "Gestora": gestora, "Classe de Ativo": classe_ativo, "Recomendação": recomendacao, "Link": link_relatorio, "Data": datetime.now().strftime("%Y-%m-%d")})
-                    st.success("Recomendação salva!")
-        if not st.session_state.big_players_data:
-            st.info("Nenhuma recomendação adicionada.")
-        else:
-            df = pd.DataFrame(st.session_state.big_players_data)
-            df_br = df[df['País'] == 'Brasil'].sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
-            if not df_br.empty:
-                pivot = df_br.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
-                st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
+           if st.session_state.get("role") == "Analista":
+                with st.form("editor_form_br"):
+                    st.markdown("#### 📝 Modo Editor: Adicionar Nova Recomendação")
+                    c1,c2,c3 = st.columns(3)
+                    gestora = c1.selectbox("Gestora", ["BlackRock","JP Morgan","Itaú Asset","XP Asset","BTG Pactual"], key="br_gestora")
+                    classe_ativo = c2.selectbox("Classe de Ativo", ["Ações Brasil", "Renda Fixa Pré", "Inflação", "Dólar"], key="br_asset")
+                    recomendacao = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True, key="br_rec")
+                    link_relatorio = st.text_input("Link para o Relatório", key="br_link")
+                    if st.form_submit_button("Salvar Recomendação"):
+                        st.session_state.big_players_data.append({"País": "Brasil", "Gestora": gestora, "Classe de Ativo": classe_ativo, "Recomendação": recomendacao, "Link": link_relatorio, "Data": datetime.now().strftime("%Y-%m-%d")})
+                        st.success("Recomendação salva!")
+            
+            # Visualização Pública (visível para todos)
+            if not st.session_state.big_players_data:
+                st.info("Nenhuma recomendação de gestora foi adicionada ainda.")
+            else:
+                df = pd.DataFrame(st.session_state.big_players_data)
+                df_br = df[df['País'] == 'Brasil'].sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
+                if not df_br.empty:
+                    pivot = df_br.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
+                    st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
 
 # --- ABA EUA ---
 with tab_us:
@@ -160,9 +167,13 @@ with tab_us:
                 c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅", h); c2.metric("Placar Dovish 🕊️",d)
                 bal = "Hawkish" if h>d else "Dovish" if d>h else "Neutro"
                 c3.metric("Balanço Final", bal)
-    with subtab_us_big_players:
-        st.subheader("Consolidado de Recomendações para os EUA")
-        # A lógica é idêntica, apenas o filtro do país muda
+        # --- LÓGICA DE PERMISSÃO PARA O MODO EDITOR ---
+        if st.session_state.get("role") == "Analista":
+            # O formulário de edição para EUA poderia ser adicionado aqui,
+            # seguindo a mesma lógica do formulário do Brasil.
+            st.info("Formulário de edição para EUA a ser implementado.")
+
+        # Visualização Pública
         if not st.session_state.big_players_data:
             st.info("Nenhuma recomendação adicionada.")
         else:
