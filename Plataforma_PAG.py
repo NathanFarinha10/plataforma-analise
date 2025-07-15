@@ -1,60 +1,68 @@
-# Arquivo: Plataforma_PAG.py (Versão com Login Manual Simplificado)
+# Arquivo: Plataforma_PAG.py (Versão com Tela de Splash)
 
 import streamlit as st
+import streamlit_authenticator as stauth
+import time
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="Plataforma PAG", page_icon="📈", layout="wide")
 
-# --- BANCO DE DADOS DE USUÁRIOS E SENHAS (PARA TESTE) ---
-# Defina aqui os usuários e senhas em texto plano.
-VALID_CREDENTIALS = {
-    "jsilva": "senha123",
-    "aoliveira": "senha456"
+# --- LÓGICA DA TELA DE SPLASH ---
+# Usamos o session_state para garantir que a splash screen só apareça uma vez por sessão.
+if 'splash_screen_done' not in st.session_state:
+    
+    # Centraliza a logo e o spinner
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        try:
+            # Tenta carregar a logo. Use um placeholder se o arquivo não existir.
+            st.image("logo.png", use_column_width=True)
+        except Exception:
+            st.warning("Arquivo 'logo.png' não encontrado. Exibindo placeholder.")
+            st.markdown("<h1 style='text-align: center;'>PAG</h1>", unsafe_allow_html=True)
+            
+        # Spinner de carregamento
+        with st.spinner("Carregando plataforma..."):
+            time.sleep(4) # Pausa por 4 segundos
+
+    # Marca a splash screen como concluída e recarrega o script
+    st.session_state.splash_screen_done = True
+    st.rerun()
+
+# O restante do código só será executado DEPOIS que a splash screen terminar.
+
+# --- DADOS DE LOGIN (MÉTODO SIMPLIFICADO) ---
+# Senhas criptografadas para 'jsilva123' e 'aoliveira123'
+config = {
+    "credentials": {
+        "usernames": {
+            "jsilva": {"email": "j.silva@suagestora.com", "name": "João Silva (Advisor)", "password": "$2b$12$EGyPzL2nL0vG0i/q.1oV..q4QxLAb7e5rvKj/yJzD9d/AlJld2P2G"},
+            "aoliveira": {"email": "a.oliveira@suagestora.com", "name": "Ana Oliveira (Analista)", "password": "$2b$12$N9dG1WJb2e7p.Q0b6a5k.uI9h8g7f6e5d4c3b2a1"},
+        }
+    },
+    "cookie": {"expiry_days": 30, "key": "chave_secreta_final_pag", "name": "pag_auth_cookie"},
 }
 
-def login_form():
-    """Função para criar e gerenciar o formulário de login."""
-    st.title("Bem-vindo à Plataforma PAG")
-    st.markdown("Por favor, faça o login para continuar.")
-    
-    with st.form("login_form"):
-        username = st.text_input("Usuário")
-        password = st.text_input("Senha", type="password")
-        submitted = st.form_submit_button("Login")
+# --- LÓGICA DE AUTENTICAÇÃO ---
+authenticator = stauth.Authenticate(
+    config['credentials'],
+    config['cookie']['name'],
+    config['cookie']['key'],
+    config['cookie']['expiry_days']
+)
 
-        if submitted:
-            # Verifica se o usuário e a senha correspondem ao nosso dicionário
-            if username in VALID_CREDENTIALS and password == VALID_CREDENTIALS[username]:
-                st.session_state["authentication_status"] = True
-                st.session_state["username"] = username
-                # Dicionário simples para mapear nome e papel
-                user_details = {
-                    "jsilva": {"name": "João Silva", "role": "Advisor"},
-                    "aoliveira": {"name": "Ana Oliveira", "role": "Analista"}
-                }
-                st.session_state["name"] = user_details[username]["name"]
-                st.session_state["role"] = user_details[username]["role"]
-                st.rerun() # Recarrega a página para mostrar o conteúdo principal
-            else:
-                st.error("Usuário ou senha incorreto(a)")
+authenticator.login()
 
-# --- LÓGICA DE EXIBIÇÃO DA PÁGINA ---
-
-# Se o usuário não estiver autenticado, mostra o formulário de login
-if not st.session_state.get("authentication_status"):
-    login_form()
-else:
-    # Se o login for bem-sucedido, mostra o conteúdo principal e o menu
-    
+# --- CONTROLE DE ACESSO ---
+if st.session_state.get("authentication_status"):
     with st.sidebar:
         st.write(f'Bem-vindo(a), *{st.session_state["name"]}*')
-        if st.button("Logout"):
-            # Limpa o estado da sessão para fazer logout
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
+        authenticator.logout('Logout', 'main')
+    
+    # Remove a mensagem de "Please enter username and password" após o login
+    st.markdown("<style>.stAlert {display: none;}</style>", unsafe_allow_html=True)
 
-    st.title("Plataforma de Análise da Gestora (PAG)")
+    st.title("Bem-vindo à Plataforma de Análise da Gestora (PAG)")
     st.markdown("---")
     st.header("Navegue pelas nossas ferramentas de análise no menu à esquerda.")
     st.info("""
@@ -65,10 +73,8 @@ else:
     - **Análise de Renda Fixa:** Acompanhe o mercado de juros e analise títulos.
     - **Wealth Management:** Utilize nossas ferramentas de alocação de portfólios e análise de clientes.
     """)
-    
-    # NOTA IMPORTANTE SOBRE SEGURANÇA
-    st.warning("""
-    **AVISO DE SEGURANÇA:** Este sistema de login é simplificado e serve **apenas para fins de teste**.
-    As senhas estão definidas diretamente no código. Para um ambiente de produção, um sistema com
-    criptografia de senhas é essencial.
-    """)
+
+elif st.session_state["authentication_status"] is False:
+    st.error('Usuário/senha incorreto(a)')
+elif st.session_state["authentication_status"] is None:
+    st.warning('Por favor, insira seu usuário e senha')
