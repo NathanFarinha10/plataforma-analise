@@ -13,6 +13,8 @@ st.set_page_config(
     layout="wide"
 )
 
+st.sidebar.image("logo.png", use_container_width=True)
+
 # --- Título e Descrição ---
 st.title("Análise de Carteira com Pesos Iguais")
 st.markdown("Analise o risco e o retorno de uma carteira diversificada com alocação igual entre os ativos.")
