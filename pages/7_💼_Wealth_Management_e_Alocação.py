@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import time
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="Wealth Management - Alocação", page_icon="💼", layout="wide")
@@ -100,31 +101,40 @@ def get_portfolio_price_data(tickers_list, period="3y"):
         return pd.DataFrame()
 
 @st.cache_data
-def categorize_ticker(ticker_symbol):
-    """Classifica um ticker em uma das 7 classes de ativos com base em heurísticas."""
-    try:
-        info = yf.Ticker(ticker_symbol).info
-        category = info.get('quoteType', '').upper()
-        fund_family = info.get('fundFamily', '').upper()
+# SUBSTITUA A FUNÇÃO 'categorize_ticker' ATUAL POR ESTAS DUAS
 
-        if category == 'EQUITY':
-            return "Ações Brasil" if '.SA' in ticker_symbol.upper() else "Ações Internacional"
-        
-        if category == 'ETF':
-            long_name = info.get('longName', '').upper()
-            if any(term in long_name for term in ['FIXA', 'BOND', 'TREASURY']):
-                return "Renda Fixa Internacional" if '.SA' not in ticker_symbol.upper() else "Renda Fixa Brasil"
-            if any(term in long_name for term in ['FII', 'IMOBILIÁRIO', 'REAL ESTATE']):
-                return "Fundos Imobiliários"
-            if any(term in long_name for term in ['GOLD', 'OURO', 'COMMODITIES']):
-                return "Alternativos"
-            if any(term in long_name for term in ['IBOVESPA', 'SMALL', 'BRAZIL']):
-                 return "Ações Brasil"
-            return "Ações Internacional"
-        
-        return "Alternativos" # Default para tipos não reconhecidos
-    except Exception:
-        return "Não Classificado"
+def get_asset_class(info, ticker_symbol):
+    """Função interna que contém a lógica de classificação."""
+    category = info.get('quoteType', '').upper()
+    if category == 'EQUITY':
+        return "Ações Brasil" if '.SA' in ticker_symbol.upper() else "Ações Internacional"
+    if category == 'ETF':
+        long_name = info.get('longName', '').upper()
+        if any(term in long_name for term in ['FIXA', 'BOND', 'TREASURY']):
+            return "Renda Fixa Internacional" if '.SA' not in ticker_symbol.upper() else "Renda Fixa Brasil"
+        if any(term in long_name for term in ['FII', 'IMOBILIÁRIO', 'REAL ESTATE']):
+            return "Fundos Imobiliários"
+        if any(term in long_name for term in ['GOLD', 'OURO', 'COMMODITIES']):
+            return "Alternativos"
+        if any(term in long_name for term in ['IBOVESPA', 'SMALL', 'BRAZIL']):
+                return "Ações Brasil"
+        return "Ações Internacional"
+    return "Alternativos"
+
+@st.cache_data
+def bulk_categorize_tickers(tickers_list):
+    """
+    Busca as informações e classifica uma lista de tickers, com pausas para evitar rate limit.
+    """
+    categories = {}
+    for ticker in tickers_list:
+        try:
+            info = yf.Ticker(ticker).info
+            categories[ticker] = get_asset_class(info, ticker)
+            time.sleep(0.1) # Adiciona uma pequena pausa de 0.1s entre as chamadas
+        except Exception:
+            categories[ticker] = "Não Classificado"
+    return categories
 
 def calculate_portfolio_risk(prices, weights):
     """Calcula o risco e retorno anualizado de uma carteira."""
@@ -247,7 +257,8 @@ if analyze_client_button:
                 client_df['weight'] = client_df['value'] / total_value
                 
                 # Categoriza cada ativo
-                client_df['asset_class'] = client_df['ticker'].apply(categorize_ticker)
+                category_map = bulk_categorize_tickers(tuple(client_df['ticker'].unique()))
+                client_df['asset_class'] = client_df['ticker'].map(category_map)
                 
                 # Agrupa por classe de ativo
                 client_allocation = client_df.groupby('asset_class')['weight'].sum() * 100
