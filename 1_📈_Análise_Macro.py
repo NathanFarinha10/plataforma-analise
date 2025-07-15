@@ -177,35 +177,40 @@ with tab_global:
 
     # SUBSTITUA TODO O CONTEÚDO DENTRO DE 'with subtab_valuation:' POR ISTO
 
+    # SUBSTITUA TODO O CONTEÚDO DENTRO DE 'with subtab_valuation:' POR ISTO
+
     with subtab_valuation:
-        st.subheader("Indicador Buffett (Market Cap to GDP)")
-        st.caption("Compara o valor total do mercado de ações dos EUA (Wilshire 5000) com o PIB nominal. É um indicador de longo prazo para avaliar se o mercado está potencialmente super ou subvalorizado em relação à economia real.")
+        st.subheader("Prêmio de Risco do Equity (Equity Risk Premium - ERP)")
+        st.caption("Compara o retorno implícito da bolsa (Earnings Yield do Shiller P/E) com o retorno de um título do governo (10-Year Treasury Yield). Um prêmio alto (diferença grande entre as linhas) sugere que as ações estão atrativas em relação à renda fixa.")
         
-        # Códigos nativos do FRED
-        market_cap_code = "WILL5000INDFC" # Wilshire 5000 Full Cap Price Index
-        gdp_code = "GDP" # Gross Domestic Product
+        # Códigos nativos e confiáveis do FRED
+        shiller_pe_code = "SHILLER_PE_RATIO_MONTH"
+        treasury_10y_code = "DGS10"
         
         # Busca os dados
-        market_cap = fetch_fred_series(market_cap_code, start_date)
-        gdp = fetch_fred_series(gdp_code, start_date)
+        shiller_pe_ratio = fetch_fred_series(shiller_pe_code, start_date)
+        treasury_yield = fetch_fred_series(treasury_10y_code, start_date)
         
-        if not market_cap.empty and not gdp.empty:
-            # O Market Cap é diário/mensal e o PIB é trimestral. Precisamos alinhá-los.
-            # Propagamos o último valor conhecido do PIB para preencher os dias/meses.
-            gdp = gdp.resample('D').ffill()
+        if not shiller_pe_ratio.empty and not treasury_yield.empty:
+            # Calcula o Earnings Yield (inverso do P/E)
+            earnings_yield = (1 / shiller_pe_ratio) * 100
             
-            # Unimos os dois dataframes e removemos dias sem dados em comum
-            df_buffett = pd.concat([market_cap, gdp], axis=1).dropna()
-            df_buffett.columns = ['Market Cap', 'GDP']
-            
-            # O Market Cap é um índice, não o valor em dólares. O PIB está em bilhões.
-            # O importante é a tendência e a relação, não o número absoluto.
-            # Para normalizar, dividimos um pelo outro.
-            df_buffett["Indicador Buffett"] = (df_buffett["Market Cap"] / df_buffett["GDP"])
-            
-            # Plotamos apenas o indicador final
-            fig = px.area(df_buffett["Indicador Buffett"], title="Evolução do Indicador Buffett")
-            fig.update_layout(yaxis_title="Ratio (Market Cap / GDP)", xaxis_title="Data", showlegend=False)
+            # Monta o DataFrame para o gráfico
+            df_erp = pd.DataFrame({
+                "Earnings Yield (Bolsa)": earnings_yield,
+                "Juro de 10 Anos (Renda Fixa)": treasury_yield
+            }).dropna()
+
+            fig = px.line(df_erp, title="Earnings Yield (Shiller PE) vs. Juro de 10 Anos (EUA)")
+            fig.update_layout(yaxis_title="Taxa Anual (%)", xaxis_title="Data", legend_title="Indicador")
             st.plotly_chart(fig, use_container_width=True)
+
+            # Gráfico do Prêmio de Risco (a diferença entre os dois)
+            df_erp["Prêmio de Risco (ERP)"] = df_erp["Earnings Yield (Bolsa)"] - df_erp["Juro de 10 Anos (Renda Fixa)"]
+            fig_premium = px.area(df_erp["Prêmio de Risco (ERP)"], title="Prêmio de Risco Histórico (ERP)")
+            fig_premium.add_hline(y=df_erp["Prêmio de Risco (ERP)"].mean(), line_dash="dash", line_color="red", annotation_text="Média Histórica")
+            fig_premium.update_layout(showlegend=False, yaxis_title="Prêmio Percentual (%)")
+            st.plotly_chart(fig_premium, use_container_width=True)
+            
         else:
-            st.warning("Não foi possível carregar os dados para o Indicador Buffett.")
+            st.warning("Não foi possível carregar os dados para a análise de Valuation.")
