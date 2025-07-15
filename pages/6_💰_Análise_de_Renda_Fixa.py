@@ -122,3 +122,42 @@ else:
     fig_inflation = px.line(inflation_df, title="Inflação Implícita no Mercado de Títulos (EUA)")
     fig_inflation.update_layout(yaxis_title="Inflação Anual Esperada (%)", xaxis_title="Data", legend_title="Horizonte")
     st.plotly_chart(fig_inflation, use_container_width=True)
+
+# ADICIONE ESTE BLOCO NO FINAL DO ARQUIVO 6_💰_Análise_de_Renda_Fixa.py
+
+st.divider()
+# --- 4. Juros Reais (TIPS) ---
+st.subheader("Juros Reais (Rendimento dos TIPS)")
+st.caption("Representa o retorno de um título do Tesouro Americano de 10 anos que já é protegido contra a inflação. Quando está negativo, o investimento considerado o mais seguro do mundo está perdendo poder de compra.")
+
+real_yield_codes = {
+    "Juro Real de 10 Anos (EUA)": "DFII10"
+}
+real_yield_df = get_fred_series(real_yield_codes, start_date)
+
+if real_yield_df.empty:
+    st.warning("Não foi possível obter os dados de juros reais.")
+else:
+    fig_real_yield = px.area(real_yield_df, title="Evolução do Juro Real Americano (TIPS 10 Anos)")
+    fig_real_yield.add_hline(y=0, line_dash="dash", line_color="red") # Linha de referência no zero
+    fig_real_yield.update_layout(yaxis_title="Taxa de Juro Real (%)", xaxis_title="Data", showlegend=False)
+    st.plotly_chart(fig_real_yield, use_container_width=True)
+
+# ADICIONE ESTE SEGUNDO BLOCO LOGO ABAIXO DO ANTERIOR
+
+st.divider()
+# --- 5. Índice de Volatilidade (MOVE) ---
+st.subheader("Índice de Volatilidade do Mercado de Juros (MOVE)")
+st.caption("Conhecido como o 'VIX dos Títulos', o Índice MOVE mede a incerteza e a volatilidade esperada no mercado de renda fixa americano. Valores altos indicam grande incerteza (medo).")
+
+move_codes = {
+    "Índice MOVE": "MOVE"
+}
+move_df = get_fred_series(move_codes, start_date)
+
+if move_df.empty:
+    st.warning("Não foi possível obter os dados do Índice MOVE.")
+else:
+    fig_move = px.line(move_df, title="Evolução do Índice de Volatilidade MOVE")
+    fig_move.update_layout(yaxis_title="Pontos do Índice", xaxis_title="Data", showlegend=False)
+    st.plotly_chart(fig_move, use_container_width=True)
