@@ -8,6 +8,8 @@ import plotly.express as px
 # --- Configuração da Página ---
 st.set_page_config(page_title="Analisador de ETFs", page_icon="🔎", layout="wide")
 
+st.sidebar.image("logo.png", use_container_width=True)
+
 # --- FUNÇÕES AUXILIARES ---
 
 @st.cache_data
