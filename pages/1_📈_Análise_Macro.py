@@ -14,6 +14,8 @@ import os
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
 
+st.sidebar.image("logo.png", use_container_width=True)
+
 # --- NOME DO ARQUIVO DE DADOS ---
 DATA_FILE = "recommendations.csv"
 
