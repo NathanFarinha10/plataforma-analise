@@ -157,31 +157,29 @@ if selected_class:
 st.subheader("🛠️ Construtor e Simulador de Portfólios")
 st.markdown("Construa uma carteira a partir dos nossos modelos, faça ajustes táticos e simule a performance e o risco.")
 
-base_model_name = st.selectbox("1. Selecione um Portfólio Modelo como Base:", options=list(portfolio_data.keys()), index=2, key="base_model_selector")
+base_model_name = st.selectbox("1. Selecione um Portfólio Modelo como Base:", options=portfolio_list, index=2)
 
-st.markdown("##### 2. Visualize e Customize a Alocação")
 assets_list = []
-model_allocation = portfolio_data[base_model_name]
-for asset_class, weight in model_allocation.items():
+for asset_class, weight in portfolio_data[base_model_name].items():
     if weight > 0:
-        recommended_asset = building_blocks_data[asset_class][0]
-        assets_list.append({"Classe de Ativo": asset_class, "Ticker": recommended_asset['ticker'], "Peso (%)": weight})
+        assets_list.append({"Classe de Ativo": asset_class, "Ticker": building_blocks_data[asset_class][0]['ticker'], "Peso (%)": weight})
 portfolio_editor_df = pd.DataFrame(assets_list)
 
-edited_portfolio_df = st.data_editor(portfolio_editor_df, num_rows="dynamic", key="portfolio_editor",
-    column_config={"Peso (%)": st.column_config.NumberColumn("Peso (%)", min_value=0, max_value=100, step=1, format="%d%%")})
+st.markdown("##### 2. Visualize e Customize a Alocação")
+edited_portfolio_df = st.data_editor(portfolio_editor_df, num_rows="dynamic", key="portfolio_editor", column_config={"Peso (%)": st.column_config.NumberColumn(format="%d%%")})
 
 total_weight = edited_portfolio_df['Peso (%)'].sum()
 if not np.isclose(total_weight, 100):
-    st.warning(f"A soma dos pesos é de {total_weight:.1f}%. Ajuste para 100% para rodar o backtest.")
+    st.warning(f"A soma dos pesos é de {total_weight:.1f}%. Ajuste para 100%.")
 
 st.markdown("##### 3. Execute a Simulação")
 if st.button("Rodar Simulação da Carteira Customizada", disabled=not np.isclose(total_weight, 100)):
     with st.spinner("Executando simulação histórica..."):
-        backtest_input_df = edited_portfolio_df.copy()
-        backtest_input_df.rename(columns={"Ticker": "ticker", "Peso (%)": "weight"}, inplace=True)
+        backtest_input_df = edited_portfolio_df.copy().rename(columns={"Ticker": "ticker", "Peso (%)": "weight"})
         backtest_input_df['weight'] = backtest_input_df['weight'] / 100
         backtest_input_df = backtest_input_df[backtest_input_df['ticker'].str.match(r'^[A-Z0-9\.\^=^-]+$')]
+        
+        st.session_state.last_backtested_portfolio = backtest_input_df.copy()
         st.session_state.backtest_results = run_backtest(backtest_input_df)
 
 if st.session_state.backtest_results:
@@ -190,64 +188,33 @@ if st.session_state.backtest_results:
     
     st.markdown("###### Performance da Carteira")
     res1, res2, res3, res4 = st.columns(4)
-    res1.metric("Retorno Total", f"{results['total_return']*100:.2f}%")
-    res2.metric("Retorno Anualizado", f"{results['annualized_return']*100:.2f}%")
-    res3.metric("Volatilidade Anualizada", f"{results['annualized_vol']*100:.2f}%")
-    res4.metric("Índice de Sharpe", f"{results['sharpe_ratio']:.2f}")
-    
-    fig_perf = px.line(results['cumulative_returns'], title="Performance Histórica Acumulada")
-    fig_perf.update_layout(yaxis_title="Retorno Acumulado", yaxis_tickformat=".2%")
-    st.plotly_chart(fig_perf, use_container_width=True)
+    res1.metric("Retorno Total", f"{results['total_return']*100:.2f}%"); res2.metric("Retorno Anualizado", f"{results['annualized_return']*100:.2f}%"); res3.metric("Volatilidade Anualizada", f"{results['annualized_vol']*100:.2f}%"); res4.metric("Índice de Sharpe", f"{results['sharpe_ratio']:.2f}")
+    fig_perf = px.line(results['cumulative_returns'], title="Performance Histórica Acumulada"); st.plotly_chart(fig_perf, use_container_width=True)
 
     st.markdown("###### Análise de Risco")
-    risk_contrib_df = (results['risk_contribution'] * 100).reset_index()
-    risk_contrib_df.columns = ['Ativo', 'Contribuição ao Risco (%)']
-    fig_risk = px.bar(risk_contrib_df.sort_values('Contribuição ao Risco (%)', ascending=False),
-        x='Ativo', y='Contribuição ao Risco (%)', title='Decomposição do Risco da Carteira', text_auto='.2f',
-        color='Contribuição ao Risco (%)', color_continuous_scale='Reds')
-    st.plotly_chart(fig_risk, use_container_width=True)
-    st.info("**Como ler este gráfico:** Ele mostra o quanto cada ativo contribui para a volatilidade total da carteira, considerando não só seu risco individual, mas também sua correlação com os outros ativos.")
-
+    risk_contrib_df = (results['risk_contribution'] * 100).reset_index().rename(columns={'index': 'Ativo', 0: 'Contribuição ao Risco (%)'})
+    fig_risk = px.bar(risk_contrib_df.sort_values('Contribuição ao Risco (%)', ascending=False), x='Ativo', y='Contribuição ao Risco (%)', title='Decomposição do Risco da Carteira', text_auto='.2f', color='Contribuição ao Risco (%)', color_continuous_scale='Reds'); st.plotly_chart(fig_risk, use_container_width=True)
+    
     st.divider()
     st.markdown("###### Teste de Estresse (Análise de Cenários)")
-    st.info("Use os sliders para simular choques de mercado e ver o impacto estimado na carteira.")
-    
-    # Busca os betas dos ativos da carteira atual
-    portfolio_tickers = st.session_state.portfolio_editor['Ticker'].tolist()
-    factor_betas = calculate_factor_betas(portfolio_tickers)
-
-    col_stress1, col_stress2 = st.columns(2)
-    with col_stress1:
-        sp500_shock = st.slider("Cenário S&P 500 (%)", -20.0, 20.0, 0.0, 1.0)
-        ief_shock = st.slider("Cenário Juros EUA (IEF) (%)", -5.0, 5.0, 0.0, 0.5)
-    with col_stress2:
-        ibov_shock = st.slider("Cenário Ibovespa (%)", -20.0, 20.0, 0.0, 1.0)
-        dollar_shock = st.slider("Cenário Dólar (%)", -15.0, 15.0, 0.0, 1.0)
+    if not st.session_state.last_backtested_portfolio.empty:
+        portfolio_to_stress = st.session_state.last_backtested_portfolio
+        with st.spinner("Calculando sensibilidades (betas)..."):
+            factor_betas = calculate_factor_betas(portfolio_to_stress['ticker'].tolist())
         
-    # Calcula o impacto
-    portfolio_df = st.session_state.portfolio_editor.copy()
-    portfolio_df['Peso'] = portfolio_df['Peso (%)'] / 100
-    
-    total_impact = 0
-    for index, row in portfolio_df.iterrows():
-        ticker = row['Ticker']
-        weight = row['Peso']
-        
-        asset_impact = 0
-        if ticker in factor_betas.index:
-            asset_impact += factor_betas.loc[ticker, "S&P 500"] * (sp500_shock / 100)
-            asset_impact += factor_betas.loc[ticker, "Ibovespa"] * (ibov_shock / 100)
-            asset_impact += factor_betas.loc[ticker, "Juros EUA (IEF)"] * (ief_shock / 100)
-            asset_impact += factor_betas.loc[ticker, "Dólar"] * (dollar_shock / 100)
-        
-        total_impact += asset_impact * weight
-
-    st.metric(
-        "Impacto Estimado na Carteira", 
-        f"{total_impact * 100:.2f}%", 
-        delta_color=("inverse" if total_impact < 0 else "normal")
-    )
-
-    with st.expander("Ver Betas Calculados para a Análise de Cenários"):
-        st.dataframe(factor_betas.style.format("{:.2f}"))
-
+        col_stress1, col_stress2 = st.columns(2)
+        with col_stress1:
+            sp500_shock = st.slider("Cenário S&P 500 (%)", -20.0, 20.0, 0.0, 1.0)
+            ief_shock = st.slider("Cenário Juros EUA (IEF) (%)", -5.0, 5.0, 0.0, 0.5)
+        with col_stress2:
+            ibov_shock = st.slider("Cenário Ibovespa (%)", -20.0, 20.0, 0.0, 1.0)
+            dollar_shock = st.slider("Cenário Dólar (%)", -15.0, 15.0, 0.0, 1.0)
+            
+        total_impact = 0
+        for index, row in portfolio_to_stress.iterrows():
+            ticker, weight = row['ticker'], row['weight']
+            if ticker in factor_betas.index:
+                asset_impact = (factor_betas.loc[ticker, "S&P 500"] * (sp500_shock/100)) + (factor_betas.loc[ticker, "Ibovespa"] * (ibov_shock/100)) + (factor_betas.loc[ticker, "Juros EUA (IEF)"] * (ief_shock/100)) + (factor_betas.loc[ticker, "Dólar"] * (dollar_shock/100))
+                total_impact += asset_impact * weight
+        st.metric("Impacto Estimado na Carteira", f"{total_impact * 100:.2f}%", delta_color=("inverse" if total_impact < 0 else "normal"))
+        with st.expander("Ver Betas Calculados"): st.dataframe(factor_betas.style.format("{:.2f}"))
