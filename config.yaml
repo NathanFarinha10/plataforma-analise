@@ -1,0 +1,18 @@
+# Arquivo: config.yaml
+
+credentials:
+  usernames:
+    jsilva:
+      email: j.silva@suagestora.com
+      name: João Silva (Advisor)
+      password: '$2b$12$EGyPzL2nL0vG0i/q.1oV..q4QxLAb7e5rvKj/yJzD9d/AlJld2P2G'
+    aoliveira:
+      email: a.oliveira@suagestora.com
+      name: Ana Oliveira (Analista)
+      password: '$2b$12$N9dG1WJb2e7p.Q0b6a5k.uI9h8g7f6e5d4c3b2a1'
+cookie:
+  expiry_days: 30
+  key: 'chave_secreta_final_pag'
+  name: pag_cookie
+preauthorized:
+  emails: []
