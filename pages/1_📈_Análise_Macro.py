@@ -1,4 +1,4 @@
-# 1_📈_Análise_Macro.py (Versão 4.0 Final com Big Players View)
+# 1_📈_Análise_Macro.py (Versão 4.1.1 - Final com Correção de Indentação)
 
 import streamlit as st
 import pandas as pd
@@ -13,14 +13,14 @@ import re
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
 
-# Verifica se o usuário está logado. Se não, exibe uma mensagem e para.
+# --- Verifica se o usuário está logado ---
 if not st.session_state.get("authentication_status"):
     st.info("Por favor, faça o login para acessar esta página.")
     st.stop()
 
 # --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
 if 'big_players_data' not in st.session_state:
-    st.session_state.big_players_data = [] # Armazena as recomendações dos Big Players
+    st.session_state.big_players_data = []
 
 # --- INICIALIZAÇÃO DAS APIS ---
 @st.cache_resource
@@ -28,12 +28,10 @@ def get_fred_api():
     try:
         api_key = st.secrets.get("FRED_API_KEY")
         if not api_key:
-            st.error("Chave da API do FRED (FRED_API_KEY) não configurada nos segredos do Streamlit.")
-            st.stop()
+            st.error("Chave da API do FRED não configurada."); st.stop()
         return Fred(api_key=api_key)
     except Exception as e:
-        st.error(f"Falha ao inicializar API do FRED: {e}")
-        st.stop()
+        st.error(f"Falha ao inicializar API do FRED: {e}"); st.stop()
 fred = get_fred_api()
 
 # --- FUNÇÕES AUXILIARES ---
@@ -64,8 +62,7 @@ def plot_indicator(data, title, y_label="Valor"):
     st.plotly_chart(fig, use_container_width=True)
 
 def analyze_central_bank_discourse(text, lang='pt'):
-    text = text.lower()
-    text = re.sub(r'\d+', '', text)
+    text = text.lower(); text = re.sub(r'\d+', '', text)
     if lang == 'pt':
         hawkish_words = ['inflação','risco','preocupação','desancoragem','expectativas','cautela','perseverança','serenidade','aperto','restritiva','incerteza','desafios']
         dovish_words = ['crescimento','atividade','hiato','ociosidade','arrefecimento','desaceleração','flexibilização','estímulo','progresso']
@@ -87,8 +84,7 @@ def style_recommendation(val):
 st.title("🌍 Painel de Análise Macroeconômica")
 start_date = "2010-01-01"
 
-editor_password = st.sidebar.text_input("Senha do Modo Editor", type="password")
-
+# --- ABA PRINCIPAL ---
 tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unidos", "🌐 Mercados Globais"])
 
 # --- ABA BRASIL ---
@@ -99,9 +95,11 @@ with tab_br:
     with subtab_br_activity:
         st.subheader("Atividade Econômica")
         plot_indicator(fetch_bcb_series(24369, start_date).pct_change(12).dropna() * 100, "IBC-Br (Var. Anual %)", "Variação %")
+    
     with subtab_br_inflation:
-        st.subheader("Inflação e Juros")
+        st.subheader("Inflação")
         plot_indicator(fetch_bcb_series(13522, start_date), "IPCA (Acum. 12M %)")
+    
     with subtab_br_bc:
         st.subheader("Indicadores Monetários (BCB)")
         plot_indicator(fetch_bcb_series(27841, start_date).pct_change(12).dropna()*100, "M2 (Var. Anual %)")
@@ -114,34 +112,33 @@ with tab_br:
                 c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅",h_score); c2.metric("Placar Dovish 🕊️",d_score)
                 bal = "Hawkish" if h_score > d_score else "Dovish" if d_score > h_score else "Neutro"
                 c3.metric("Balanço Final", bal)
+    
     with subtab_br_big_players:
         st.subheader("Consolidado de Recomendações para o Brasil")
-           if st.session_state.get("role") == "Analista":
-                with st.form("editor_form_br"):
-                    st.markdown("#### 📝 Modo Editor: Adicionar Nova Recomendação")
-                    c1,c2,c3 = st.columns(3)
-                    gestora = c1.selectbox("Gestora", ["BlackRock","JP Morgan","Itaú Asset","XP Asset","BTG Pactual"], key="br_gestora")
-                    classe_ativo = c2.selectbox("Classe de Ativo", ["Ações Brasil", "Renda Fixa Pré", "Inflação", "Dólar"], key="br_asset")
-                    recomendacao = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True, key="br_rec")
-                    link_relatorio = st.text_input("Link para o Relatório", key="br_link")
-                    if st.form_submit_button("Salvar Recomendação"):
-                        st.session_state.big_players_data.append({"País": "Brasil", "Gestora": gestora, "Classe de Ativo": classe_ativo, "Recomendação": recomendacao, "Link": link_relatorio, "Data": datetime.now().strftime("%Y-%m-%d")})
-                        st.success("Recomendação salva!")
-            
-            # Visualização Pública (visível para todos)
-            if not st.session_state.big_players_data:
-                st.info("Nenhuma recomendação de gestora foi adicionada ainda.")
-            else:
-                df = pd.DataFrame(st.session_state.big_players_data)
-                df_br = df[df['País'] == 'Brasil'].sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
-                if not df_br.empty:
-                    pivot = df_br.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
-                    st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
+        if st.session_state.get("role") == "Analista":
+            with st.form("editor_form_br"):
+                st.markdown("#### 📝 Modo Editor: Adicionar Nova Recomendação")
+                c1,c2,c3 = st.columns(3)
+                gestora = c1.selectbox("Gestora", ["BlackRock","JP Morgan","Itaú Asset","XP Asset","BTG Pactual"], key="br_gestora")
+                classe_ativo = c2.selectbox("Classe de Ativo", ["Ações Brasil", "Renda Fixa Pré", "Inflação", "Dólar"], key="br_asset")
+                recomendacao = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True, key="br_rec")
+                if st.form_submit_button("Salvar Recomendação"):
+                    st.session_state.big_players_data.append({"País": "Brasil", "Gestora": gestora, "Classe de Ativo": classe_ativo, "Recomendação": recomendacao, "Data": datetime.now().strftime("%Y-%m-%d")})
+                    st.success("Recomendação salva!")
+        
+        if not st.session_state.get('big_players_data'):
+            st.info("Nenhuma recomendação adicionada.")
+        else:
+            df = pd.DataFrame(st.session_state.big_players_data)
+            df_br = df[df['País'] == 'Brasil'].sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
+            if not df_br.empty:
+                pivot = df_br.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
+                st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
 
 # --- ABA EUA ---
 with tab_us:
     st.header("Principais Indicadores dos Estados Unidos")
-    subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_bc, subtab_us_big_players = st.tabs(["Atividade e Emprego", "Inflação e Juros", "Curva de Juros", "Visão do Fed", "Visão dos Big Players"])
+    subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_bc, subtab_us_big_players = st.tabs(["Atividade", "Inflação", "Curva de Juros", "Visão do Fed", "Visão dos Big Players"])
     
     with subtab_us_activity:
         st.subheader("Atividade Econômica")
@@ -167,14 +164,11 @@ with tab_us:
                 c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅", h); c2.metric("Placar Dovish 🕊️",d)
                 bal = "Hawkish" if h>d else "Dovish" if d>h else "Neutro"
                 c3.metric("Balanço Final", bal)
-        # --- LÓGICA DE PERMISSÃO PARA O MODO EDITOR ---
+    with subtab_us_big_players:
+        st.subheader("Consolidado de Recomendações para os EUA")
         if st.session_state.get("role") == "Analista":
-            # O formulário de edição para EUA poderia ser adicionado aqui,
-            # seguindo a mesma lógica do formulário do Brasil.
-            st.info("Formulário de edição para EUA a ser implementado.")
-
-        # Visualização Pública
-        if not st.session_state.big_players_data:
+            st.info("O formulário de edição para os EUA pode ser adicionado aqui, similar ao do Brasil.")
+        if not st.session_state.get('big_players_data'):
             st.info("Nenhuma recomendação adicionada.")
         else:
             df = pd.DataFrame(st.session_state.big_players_data)
@@ -183,32 +177,27 @@ with tab_us:
                 pivot = df_us.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
                 st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
 
-
 # --- ABA MERCADOS GLOBAIS ---
 with tab_global:
     st.header("Índices e Indicadores de Mercado Global")
     subtab_equity, subtab_commodities, subtab_risk, subtab_valuation = st.tabs(["Índices de Ações", "Commodities & Moedas", "Risco & Volatilidade", "Valuation"])
     with subtab_equity:
-        st.subheader("Performance Comparada de Índices de Ações")
-        tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Nasdaq": "^IXIC", "DAX": "^GDAXI", "Nikkei 225": "^N225"}
+        tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Nasdaq": "^IXIC", "DAX": "^GDAXI"}
         sel = st.multiselect("Selecione os índices:", options=list(tickers.keys()), default=["S&P 500", "Ibovespa"])
         if sel:
             data = fetch_market_data([tickers[i] for i in sel])
             if not data.empty: st.plotly_chart(px.line((data / data.dropna().iloc[0]) * 100, title="Performance Normalizada (Base 100)"), use_container_width=True)
     with subtab_commodities:
-        st.subheader("Preços de Commodities e Taxas de Câmbio")
         c1,c2 = st.columns(2)
         comm_tickers = {"Petróleo WTI": "CL=F", "Ouro": "GC=F"}; data = fetch_market_data(list(comm_tickers.values()))
         if not data.empty: data.rename(columns=lambda c: next(k for k,v in comm_tickers.items() if v==c), inplace=True); c1.plotly_chart(px.line(data, title="Commodities"), use_container_width=True)
         curr_tickers = {"Dólar/Real": "BRL=X", "Euro/Dólar": "EURUSD=X"}; data=fetch_market_data(list(curr_tickers.values()))
         if not data.empty: data.rename(columns=lambda c: next(k for k,v in curr_tickers.items() if v==c), inplace=True); c2.plotly_chart(px.line(data, title="Câmbio"), use_container_width=True)
     with subtab_risk:
-        st.subheader("Medidores de Risco de Mercado")
         vix = fetch_market_data(["^VIX"])
         if not vix.empty:
             fig = px.area(vix, title="Índice de Volatilidade VIX"); fig.add_hline(y=20, line_dash="dash"); fig.add_hline(y=30, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
     with subtab_valuation:
-        st.subheader("Análise de Fatores: Growth vs. Value (EUA)")
         factor_tickers = {"Growth": "VUG", "Value": "VTV"}
         data = fetch_market_data(list(factor_tickers.values()))
         if not data.empty:
