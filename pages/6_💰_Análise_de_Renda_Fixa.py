@@ -1,4 +1,4 @@
-# pages/6_💰_Análise_de_Renda_Fixa.py (Versão 2.0 com Abas EUA/Brasil)
+# pages/6_💰_Análise_de_Renda_Fixa.py (Versão 3.0 com Analisador de Títulos)
 
 import streamlit as st
 import pandas as pd
@@ -6,6 +6,8 @@ from fredapi import Fred
 from bcb import sgs
 import plotly.express as px
 from datetime import datetime, timedelta
+import numpy as np
+import numpy_financial as npf
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="Análise de Renda Fixa", page_icon="💰", layout="wide")
@@ -15,38 +17,27 @@ st.set_page_config(page_title="Análise de Renda Fixa", page_icon="💰", layout
 def get_fred_api():
     try:
         api_key = st.secrets.get("FRED_API_KEY")
-        if not api_key:
-            st.error("Chave da API do FRED (FRED_API_KEY) não encontrada nos segredos do Streamlit.")
-            st.stop()
+        if not api_key: st.error("Chave da API do FRED (FRED_API_KEY) não encontrada."); st.stop()
         return Fred(api_key=api_key)
     except Exception as e:
-        st.error(f"Falha ao inicializar API do FRED: {e}")
-        st.stop()
+        st.error(f"Falha ao inicializar API do FRED: {e}"); st.stop()
 
 fred = get_fred_api()
 
-# --- FUNÇÕES DE BUSCA DE DADOS COM CACHE ---
-
-# Funções para dados dos EUA (FRED)
+# --- FUNÇÕES DE BUSCA DE DADOS ---
 @st.cache_data(ttl=3600)
 def get_us_yield_curve_data():
-    maturities_codes = {
-        '1 Mês': 'DGS1MO', '3 Meses': 'DGS3MO', '6 Meses': 'DGS6MO', 
-        '1 Ano': 'DGS1', '2 Anos': 'DGS2', '3 Anos': 'DGS3', 
-        '5 Anos': 'DGS5', '7 Anos': 'DGS7', '10 Anos': 'DGS10', 
-        '20 Anos': 'DGS20', '30 Anos': 'DGS30'
-    }
-    yield_data = []
-    for name, code in maturities_codes.items():
+    codes = {'1 Mês':'DGS1MO','3 Meses':'DGS3MO','6 Meses':'DGS6MO','1 Ano':'DGS1','2 Anos':'DGS2','3 Anos':'DGS3','5 Anos':'DGS5','7 Anos':'DGS7','10 Anos':'DGS10','20 Anos':'DGS20','30 Anos':'DGS30'}
+    data = []
+    for name, code in codes.items():
         try:
-            latest_value = fred.get_series_latest_release(code)
-            if not latest_value.empty:
-                yield_data.append({'Prazo': name, 'Taxa (%)': latest_value.iloc[0]})
+            val = fred.get_series_latest_release(code)
+            if not val.empty: data.append({'Prazo': name, 'Taxa (%)': val.iloc[0]})
         except: continue
-    maturities_order = list(maturities_codes.keys())
-    df = pd.DataFrame(yield_data)
+    order = list(codes.keys())
+    df = pd.DataFrame(data)
     if not df.empty:
-        df['Prazo'] = pd.Categorical(df['Prazo'], categories=maturities_order, ordered=True)
+        df['Prazo'] = pd.Categorical(df['Prazo'], categories=order, ordered=True)
         return df.sort_values('Prazo')
     return df
 
@@ -54,68 +45,56 @@ def get_us_yield_curve_data():
 def get_fred_series(series_codes, start_date):
     df = pd.DataFrame()
     for name, code in series_codes.items():
-        try:
-            series = fred.get_series(code, start_date)
-            df[name] = series
+        try: df[name] = fred.get_series(code, start_date)
         except: continue
     return df.dropna()
 
-# Funções para dados do Brasil (BCB SGS)
 @st.cache_data(ttl=3600)
 def get_brazilian_real_interest_rate(start_date):
-    """Busca dados da Selic e IPCA para calcular o juro real ex-post."""
     try:
-        selic_diaria = sgs.get({'selic': 432}, start=start_date)
-        ipca_anual = sgs.get({'ipca': 13522}, start=start_date)
-        
-        # Converte para decimal
-        selic_diaria['selic'] /= 100
-        ipca_anual['ipca'] /= 100
-        
-        # Consolida em base mensal para alinhamento
-        df = selic_diaria.resample('M').mean().join(ipca_anual.resample('M').last()).dropna()
-        
-        # Fórmula do Juro Real: ((1 + nominal) / (1 + inflação)) - 1
-        df['Juro Real (aa)'] = ((1 + df['selic']) / (1 + df['ipca'])) - 1
-        df['Juro Real (aa)'] *= 100 # Converte para percentual
-        
+        selic = sgs.get({'selic': 432}, start=start_date) / 100
+        ipca = sgs.get({'ipca': 13522}, start=start_date) / 100
+        df = selic.resample('M').mean().join(ipca.resample('M').last()).dropna()
+        df['Juro Real (aa)'] = (((1 + df['selic']) / (1 + df['ipca'])) - 1) * 100
         return df[['Juro Real (aa)']]
-    except Exception:
-        return pd.DataFrame()
+    except Exception: return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
 def get_brazilian_yield_curve():
-    """Busca a Estrutura a Termo da Taxa de Juros (ETTJ) para títulos prefixados."""
-    ettj_codes = {
-        "1 Ano": 12469, "2 Anos": 12470, "3 Anos": 12471,
-        "4 Anos": 12472, "5 Anos": 12473, "10 Anos": 12478
-    }
-    yield_data = []
-    for name, code in ettj_codes.items():
+    codes = {"1 Ano":12469,"2 Anos":12470,"3 Anos":12471,"5 Anos":12473,"10 Anos":12478}
+    data = []
+    for name, code in codes.items():
         try:
-            # Pega o último valor disponível
-            latest_value = sgs.get({name: code}, last=1)
-            if not latest_value.empty:
-                yield_data.append({'Prazo': name, 'Taxa (%)': latest_value.iloc[0, 0]})
-        except:
-            continue
-    
-    df = pd.DataFrame(yield_data)
+            val = sgs.get({name: code}, last=1)
+            if not val.empty: data.append({'Prazo': name, 'Taxa (%)': val.iloc[0, 0]})
+        except: continue
+    df = pd.DataFrame(data)
     if not df.empty:
-        df['Prazo'] = pd.Categorical(df['Prazo'], categories=ettj_codes.keys(), ordered=True)
+        df['Prazo'] = pd.Categorical(df['Prazo'], categories=codes.keys(), ordered=True)
         return df.sort_values('Prazo')
     return df
 
+# --- FUNÇÕES DE CÁLCULO PARA O ANALISADOR DE TÍTULOS ---
+def calculate_bond_cashflows(face_value, coupon_rate, years_to_maturity, freq):
+    periods = int(np.floor(years_to_maturity * freq))
+    coupon_payment = (coupon_rate / freq) * face_value
+    cashflows = [coupon_payment] * periods
+    if periods > 0: cashflows[-1] += face_value
+    return cashflows
+
+def calculate_theoretical_price(cashflows, discount_rate, freq):
+    pv_sum = 0
+    for t, cf in enumerate(cashflows, 1):
+        pv_sum += cf / ((1 + discount_rate / freq) ** t)
+    return pv_sum
 
 # --- INTERFACE DA APLICAÇÃO ---
 st.title("💰 Painel de Análise de Renda Fixa")
-st.markdown("Um cockpit para monitorar as condições dos mercados de juros, crédito e inflação nos EUA e no Brasil.")
-
+st.markdown("Um cockpit para monitorar as condições dos mercados e analisar o valor relativo de títulos de dívida.")
 start_date = datetime.now() - timedelta(days=5*365)
-tab_us, tab_br = st.tabs(["Mercado Americano (Referência)", "Mercado Brasileiro"])
 
+tab_us, tab_br, tab_analyzer = st.tabs(["Mercado Americano (Referência)", "Mercado Brasileiro", "Analisador de Títulos"])
 
-# --- ABA DO MERCADO AMERICANO ---
 with tab_us:
     st.header("Indicadores do Mercado de Referência dos EUA")
     
@@ -196,3 +175,80 @@ with tab_br:
         fig = px.line(yield_curve_df_br, x='Prazo', y='Taxa (%)', title="Forma da Curva de Juros Pré-Fixada Atual", markers=True)
         fig.update_layout(xaxis_title="Vencimento do Título", yaxis_title="Taxa de Juros Anual (%)")
         st.plotly_chart(fig, use_container_width=True)
+
+
+# --- ABA DO ANALISADOR DE TÍTULOS ---
+with tab_analyzer:
+    st.header("Analisador de Valor Relativo de Títulos")
+    st.info("Esta ferramenta calcula o 'preço justo' de um título com base nas condições de mercado atuais (juros e spreads) e o compara com o preço real de negociação.")
+
+    # --- INPUTS DO ANALISTA ---
+    st.markdown("##### 1. Insira as Características do Título")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        market_price_pct = st.number_input("Preço de Mercado Atual (% Valor de Face)", 1.0, value=99.0, step=0.1, format="%.2f")
+        face_value = st.number_input("Valor de Face", 1, value=1000)
+    with col2:
+        coupon_rate_pct = st.number_input("Taxa de Cupom Anual (%)", 0.0, value=6.0, step=0.1, format="%.2f")
+        maturity_date = st.date_input("Data de Vencimento", pd.to_datetime("2034-07-15"))
+    with col3:
+        risk_levels = {"Soberano/AAA": "AAA", "Investment Grade (A-BBB)": "BBB", "High Yield (BB+ ou abaixo)": "HY"}
+        risk_level = st.selectbox("Nível de Risco do Emissor", options=list(risk_levels.keys()))
+        freq = st.selectbox("Frequência do Cupom", [2, 1], format_func=lambda x: "Semestral" if x == 2 else "Anual")
+    
+    analyze_bond_button = st.button("Analisar Valor Relativo do Título")
+
+    if analyze_bond_button:
+        # --- PREPARAÇÃO DOS DADOS DE MERCADO ---
+        us_yield_curve = get_us_yield_curve_data()
+        spread_codes = {"BBB": "BAMLC0A4CBBB", "HY": "BAMLH0A0HYM2"}
+        spreads_df = get_fred_series({k: v for k, v in spread_codes.items() if k in risk_levels.values()}, "2000-01-01")
+        
+        if us_yield_curve.empty or spreads_df.empty:
+            st.error("Não foi possível carregar os dados de mercado necessários para a análise.")
+        else:
+            # --- CÁLCULO ---
+            years_to_maturity = (maturity_date - datetime.now().date()).days / 365.25
+            if years_to_maturity <= 0: st.error("Data de vencimento deve ser no futuro."); st.stop()
+
+            # 1. Obter Taxa Livre de Risco interpolada da curva de juros
+            maturities_num = {'1 Mês':1/12,'3 Meses':3/12,'6 Meses':6/12,'1 Ano':1,'2 Anos':2,'3 Anos':3,'5 Anos':5,'7 Anos':7,'10 Anos':10,'20 Anos':20,'30 Anos':30}
+            us_yield_curve['PrazoNum'] = us_yield_curve['Prazo'].map(maturities_num)
+            risk_free_rate = np.interp(years_to_maturity, us_yield_curve['PrazoNum'], us_yield_curve['Taxa (%)']) / 100
+
+            # 2. Obter Spread de Crédito
+            selected_risk = risk_levels[risk_level]
+            credit_spread = 0
+            if selected_risk != "AAA":
+                credit_spread = spreads_df[selected_risk].iloc[-1] / 100
+
+            # 3. Calcular Taxa de Desconto Teórica e Preço Justo
+            theoretical_discount_rate = risk_free_rate + credit_spread
+            bond_cashflows = calculate_bond_cashflows(face_value, coupon_rate_pct/100, years_to_maturity, freq)
+            theoretical_price = calculate_theoretical_price(bond_cashflows, theoretical_discount_rate, freq)
+            
+            # --- EXIBIÇÃO DOS RESULTADOS ---
+            st.divider()
+            st.markdown("##### 2. Resultados da Análise de Mercado")
+            
+            res1, res2, res3 = st.columns(3)
+            with res1:
+                st.metric("Preço Justo de Mercado (Teórico)", f"{theoretical_price:,.2f}",
+                          help=f"Calculado com taxa livre de risco de {risk_free_rate*100:.2f}% + spread de {credit_spread*100:.2f}%.")
+            with res2:
+                market_price = market_price_pct/100 * face_value
+                st.metric("Preço de Mercado (Informado)", f"{market_price:,.2f}")
+            with res3:
+                diff = ((market_price / theoretical_price) - 1) * 100
+                st.metric("Diferença (Prêmio/Desconto)", f"{diff:.2f}%", 
+                          delta=f"{'Caro' if diff > 0 else 'Barato'}", delta_color="inverse",
+                          help="Se positivo, o título está sendo negociado mais caro que o preço justo teórico. Se negativo, mais barato.")
+            
+            st.info(f"**Conclusão:** Com uma taxa de desconto exigida pelo mercado de **{theoretical_discount_rate*100:.2f}%** (para este prazo e risco), o preço justo do título seria **{theoretical_price:,.2f}**. O preço de mercado atual de **{market_price:,.2f}** está **{'%.2f%% %s' % (abs(diff), 'acima (caro)' if diff > 0 else 'abaixo (barato)')}** deste valor.")
+            
+            # Visualização na Curva de Juros
+            with st.expander("Ver Posição do Título na Curva de Juros"):
+                fig = px.line(us_yield_curve, x='Prazo', y='Taxa (%)', title="Curva de Juros dos EUA vs. Taxa Exigida pelo Título", markers=True)
+                # Adiciona o ponto da taxa teórica
+                fig.add_scatter(x=[f"{years_to_maturity:.1f} Anos"], y=[theoretical_discount_rate*100], mode='markers', marker=dict(size=12, color='red'), name='Taxa Exigida (Justa)')
+                st.plotly_chart(fig, use_container_width=True)
