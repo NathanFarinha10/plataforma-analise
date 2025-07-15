@@ -10,6 +10,7 @@ import yfinance as yf
 import numpy as np
 import re
 import os
+import json
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
@@ -18,6 +19,9 @@ st.sidebar.image("logo.png", use_container_width=True)
 
 # --- NOME DO ARQUIVO DE DADOS ---
 DATA_FILE = "recommendations.csv"
+RECOMMENDATIONS_FILE = "recommendations.csv"
+MANAGER_VIEWS_FILE = "manager_views.json"
+REPORTS_DIR = "reports"
 
 # --- Verifica se o usuário está logado ---
 if not st.session_state.get("authentication_status"):
@@ -30,6 +34,22 @@ if 'big_players_data' not in st.session_state:
         st.session_state.big_players_data = pd.read_csv(DATA_FILE)
     else:
         st.session_state.big_players_data = pd.DataFrame(columns=["País", "Gestora", "Classe de Ativo", "Recomendação", "Data"])
+
+def load_data():
+    if os.path.exists(RECOMMENDATIONS_FILE):
+        recs = pd.read_csv(RECOMMENDATIONS_FILE)
+    else:
+        recs = pd.DataFrame(columns=["Gestora", "Classe de Ativo", "Recomendação", "Data"])
+    
+    if os.path.exists(MANAGER_VIEWS_FILE):
+        with open(MANAGER_VIEWS_FILE, 'r', encoding='utf-8') as f:
+            views = json.load(f)
+    else:
+        views = {} # Estrutura padrão será criada se o arquivo não existir
+    
+    return recs, views
+
+recommendations_df, manager_views = load_data()
 
 # --- INICIALIZAÇÃO DAS APIS ---
 @st.cache_resource
@@ -83,11 +103,8 @@ def analyze_central_bank_discourse(text, lang='pt'):
     return hawkish_score, dovish_score
 
 def style_recommendation(val):
-    if val == 'Overweight': color = 'rgba(40, 167, 69, 0.7)'
-    elif val == 'Underweight': color = 'rgba(220, 53, 69, 0.7)'
-    elif val == 'Neutral': color = 'rgba(255, 193, 7, 0.7)'
-    else: color = 'transparent'
-    return f'background-color: {color}; color: white; text-align: center; font-weight: bold;'
+    colors = {'Overweight': 'rgba(40, 167, 69, 0.7)', 'Underweight': 'rgba(220, 53, 69, 0.7)', 'Neutral': 'rgba(255, 193, 7, 0.7)'}
+    return f'background-color: {colors.get(val, "transparent")}; color: white; text-align: center; font-weight: bold;'
 
 # --- UI DA APLICAÇÃO ---
 st.title("🌍 Painel de Análise Macroeconômica")
@@ -122,32 +139,6 @@ with tab_br:
                 bal = "Hawkish" if h_score > d_score else "Dovish" if d_score > h_score else "Neutro"
                 c3.metric("Balanço Final", bal)
     
-    with subtab_br_big_players:
-        st.subheader("Consolidado de Recomendações para o Brasil")
-        if st.session_state.get("role") == "Analista":
-            with st.form("editor_form_br"):
-                st.markdown("#### 📝 Modo Editor: Adicionar Nova Recomendação")
-                c1,c2,c3 = st.columns(3)
-                gestora = c1.selectbox("Gestora", ["BlackRock","JP Morgan","Itaú Asset","XP Asset","BTG Pactual"], key="br_gestora")
-                classe_ativo = c2.selectbox("Classe de Ativo", ["Ações Brasil", "Renda Fixa Pré", "Inflação", "Dólar"], key="br_asset")
-                recomendacao = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True, key="br_rec")
-                if st.form_submit_button("Salvar Recomendação"):
-                    new_data = pd.DataFrame([{"País": "Brasil", "Gestora": gestora, "Classe de Ativo": classe_ativo, "Recomendação": recomendacao, "Data": datetime.now().strftime("%Y-%m-%d")}])
-                    updated_df = pd.concat([st.session_state.big_players_data, new_data], ignore_index=True)
-                    updated_df.to_csv(DATA_FILE, index=False)
-                    st.session_state.big_players_data = updated_df
-                    st.success("Recomendação salva!")
-                    st.rerun()
-
-        df_display = st.session_state.big_players_data
-        if df_display.empty:
-            st.info("Nenhuma recomendação adicionada.")
-        else:
-            df_br = df_display[df_display['País'] == 'Brasil']
-            if not df_br.empty:
-                df_br_latest = df_br.sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
-                pivot = df_br_latest.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
-                st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
 
 # --- ABA EUA ---
 with tab_us:
@@ -178,24 +169,11 @@ with tab_us:
                 c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅", h); c2.metric("Placar Dovish 🕊️",d)
                 bal = "Hawkish" if h>d else "Dovish" if d>h else "Neutro"
                 c3.metric("Balanço Final", bal)
-    with subtab_us_big_players:
-        st.subheader("Consolidado de Recomendações para os EUA")
-        if st.session_state.get("role") == "Analista":
-            st.info("O formulário de edição para os EUA pode ser adicionado aqui, similar ao do Brasil.")
-        df_display_us = st.session_state.big_players_data
-        if df_display_us.empty:
-            st.info("Nenhuma recomendação adicionada.")
-        else:
-            df_us = df_display_us[df_display_us['País'] == 'EUA']
-            if not df_us.empty:
-                df_us_latest = df_us.sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
-                pivot = df_us_latest.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
-                st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
 
 # --- ABA MERCADOS GLOBAIS ---
 with tab_global:
     st.header("Índices e Indicadores de Mercado Global")
-    subtab_equity, subtab_commodities, subtab_risk, subtab_valuation = st.tabs(["Índices de Ações", "Commodities & Moedas", "Risco & Volatilidade", "Valuation"])
+    subtab_equity, subtab_commodities, subtab_risk, subtab_valuation, subtab_big_players = st.tabs(["Ações", "Commodities", "Risco", "Valuation", "Visão dos Big Players"])
     with subtab_equity:
         tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Nasdaq": "^IXIC", "DAX": "^GDAXI"}
         sel = st.multiselect("Selecione os índices:", options=list(tickers.keys()), default=["S&P 500", "Ibovespa"])
@@ -218,3 +196,79 @@ with tab_global:
         if not data.empty:
             data["Ratio"] = data["VUG"] / data["VTV"]
             st.plotly_chart(px.line(data["Ratio"], title="Ratio de Performance: Growth vs. Value"), use_container_width=True)
+    with subtab_big_players:
+        st.subheader("Visão Consolidada dos Grandes Players")
+
+        # --- VISUALIZAÇÃO PÚBLICA ---
+        st.markdown("##### Matriz de Recomendações Táticas")
+        if recommendations_df.empty:
+            st.info("Nenhuma recomendação tática adicionada.")
+        else:
+            latest_recs = recommendations_df.sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'])
+            pivot_table = latest_recs.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
+            st.dataframe(pivot_table.style.applymap(style_recommendation), use_container_width=True)
+        
+        st.divider()
+        st.markdown("##### Análise Detalhada por Gestora")
+        
+        # Gestoras a serem exibidas
+        managers_to_display = ["BlackRock", "JP Morgan", "XP", "BTG"]
+        for manager in managers_to_display:
+            with st.expander(f"Visão da {manager}"):
+                view_data = manager_views.get(manager, {"summary": "Dados não disponíveis.", "report_file": ""})
+                st.markdown(view_data["summary"])
+                if view_data.get("report_file") and os.path.exists(view_data["report_file"]):
+                    with open(view_data["report_file"], "rb") as pdf_file:
+                        st.download_button(label="Baixar Relatório Completo", data=pdf_file, file_name=os.path.basename(view_data["report_file"]), mime='application/octet-stream')
+        
+        st.divider()
+        st.markdown("##### Consolidação Highpar")
+        st.info(manager_views.get("Highpar", {"summary": "Visão da casa ainda não definida."})["summary"])
+
+        # --- MODO EDITOR ---
+        if st.session_state.get("role") == "Analista":
+            st.divider()
+            st.markdown("---")
+            st.header("📝 Modo Editor")
+
+            # Editor da Matriz de Recomendações
+            with st.form("matrix_editor_form"):
+                st.markdown("##### Editar Matriz de Recomendações")
+                c1,c2,c3 = st.columns(3)
+                gestora = c1.selectbox("Gestora (Matriz)", managers_to_display)
+                classe_ativo = c2.selectbox("Classe de Ativo (Matriz)", ["Ações Brasil", "Ações EUA", "Renda Fixa Pré", "Inflação", "Dólar", "Commodities"])
+                recomendacao = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True)
+                if st.form_submit_button("Salvar na Matriz"):
+                    new_rec = pd.DataFrame([{"Gestora": gestora, "Classe de Ativo": classe_ativo, "Recomendação": recomendacao, "Data": datetime.now().strftime("%Y-%m-%d")}])
+                    updated_recs = pd.concat([recommendations_df, new_rec], ignore_index=True)
+                    updated_recs.to_csv(RECOMMENDATIONS_FILE, index=False)
+                    st.success("Matriz de recomendações atualizada!"); st.rerun()
+
+            # Editor dos Detalhes das Gestoras
+            with st.form("details_editor_form"):
+                st.markdown("##### Editar Análise Detalhada da Gestora")
+                manager_to_edit = st.selectbox("Selecione a Gestora para Editar", managers_to_display + ["Highpar"])
+                
+                current_summary = manager_views.get(manager_to_edit, {}).get("summary", "")
+                new_summary = st.text_area("Texto da Análise", value=current_summary, height=250)
+                
+                uploaded_file = st.file_uploader("Subir novo relatório em PDF (opcional)")
+
+                if st.form_submit_button("Salvar Análise Detalhada"):
+                    if uploaded_file is not None:
+                        # Cria o diretório se não existir
+                        if not os.path.exists(REPORTS_DIR):
+                            os.makedirs(REPORTS_DIR)
+                        # Salva o arquivo e guarda o caminho
+                        file_path = os.path.join(REPORTS_DIR, uploaded_file.name)
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        manager_views[manager_to_edit]["report_file"] = file_path
+                    
+                    manager_views[manager_to_edit]["summary"] = new_summary
+                    manager_views[manager_to_edit]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+
+                    with open(MANAGER_VIEWS_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(manager_views, f, ensure_ascii=False, indent=4)
+                    
+                    st.success(f"Análise da {manager_to_edit} atualizada!"); st.rerun()
