@@ -208,3 +208,46 @@ if st.session_state.backtest_results:
     st.plotly_chart(fig_risk, use_container_width=True)
     st.info("**Como ler este gráfico:** Ele mostra o quanto cada ativo contribui para a volatilidade total da carteira, considerando não só seu risco individual, mas também sua correlação com os outros ativos.")
 
+st.divider()
+    st.markdown("###### Teste de Estresse (Análise de Cenários)")
+    st.info("Use os sliders para simular choques de mercado e ver o impacto estimado na carteira.")
+    
+    # Busca os betas dos ativos da carteira atual
+    portfolio_tickers = st.session_state.portfolio_editor['Ticker'].tolist()
+    factor_betas = calculate_factor_betas(portfolio_tickers)
+
+    col_stress1, col_stress2 = st.columns(2)
+    with col_stress1:
+        sp500_shock = st.slider("Cenário S&P 500 (%)", -20.0, 20.0, 0.0, 1.0)
+        ief_shock = st.slider("Cenário Juros EUA (IEF) (%)", -5.0, 5.0, 0.0, 0.5)
+    with col_stress2:
+        ibov_shock = st.slider("Cenário Ibovespa (%)", -20.0, 20.0, 0.0, 1.0)
+        dollar_shock = st.slider("Cenário Dólar (%)", -15.0, 15.0, 0.0, 1.0)
+        
+    # Calcula o impacto
+    portfolio_df = st.session_state.portfolio_editor.copy()
+    portfolio_df['Peso'] = portfolio_df['Peso (%)'] / 100
+    
+    total_impact = 0
+    for index, row in portfolio_df.iterrows():
+        ticker = row['Ticker']
+        weight = row['Peso']
+        
+        asset_impact = 0
+        if ticker in factor_betas.index:
+            asset_impact += factor_betas.loc[ticker, "S&P 500"] * (sp500_shock / 100)
+            asset_impact += factor_betas.loc[ticker, "Ibovespa"] * (ibov_shock / 100)
+            asset_impact += factor_betas.loc[ticker, "Juros EUA (IEF)"] * (ief_shock / 100)
+            asset_impact += factor_betas.loc[ticker, "Dólar"] * (dollar_shock / 100)
+        
+        total_impact += asset_impact * weight
+
+    st.metric(
+        "Impacto Estimado na Carteira", 
+        f"{total_impact * 100:.2f}%", 
+        delta_color=("inverse" if total_impact < 0 else "normal")
+    )
+
+    with st.expander("Ver Betas Calculados para a Análise de Cenários"):
+        st.dataframe(factor_betas.style.format("{:.2f}"))
+
