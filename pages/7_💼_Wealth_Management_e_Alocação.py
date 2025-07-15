@@ -208,7 +208,7 @@ if st.session_state.backtest_results:
     st.plotly_chart(fig_risk, use_container_width=True)
     st.info("**Como ler este gráfico:** Ele mostra o quanto cada ativo contribui para a volatilidade total da carteira, considerando não só seu risco individual, mas também sua correlação com os outros ativos.")
 
-st.divider()
+    st.divider()
     st.markdown("###### Teste de Estresse (Análise de Cenários)")
     st.info("Use os sliders para simular choques de mercado e ver o impacto estimado na carteira.")
     
