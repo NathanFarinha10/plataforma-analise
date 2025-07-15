@@ -1,4 +1,4 @@
-# pages/7_💼_Wealth_Management.py (Versão 4.0 - Final com Suitability Integrado)
+# pages/7_💼_Wealth_Management.py (Versão 5.2 - Com Contribuição de Risco)
 
 import streamlit as st
 import pandas as pd
@@ -12,9 +12,12 @@ import time
 st.set_page_config(page_title="Wealth Management - Alocação", page_icon="💼", layout="wide")
 
 # --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
-# Usado para guardar o perfil do cliente entre as interações
 if 'client_profile' not in st.session_state:
-    st.session_state.client_profile = "Balanceado" # Começa com um perfil padrão
+    st.session_state.client_profile = "Balanceado"
+if 'portfolio_editor_df' not in st.session_state:
+    st.session_state.portfolio_editor_df = pd.DataFrame()
+if 'backtest_results' not in st.session_state:
+    st.session_state.backtest_results = None
 
 # --- DADOS: ALOCAÇÃO ESTRATÉGICA E BUILDING BLOCKS ---
 portfolio_data = {
@@ -25,14 +28,13 @@ portfolio_data = {
     "Agressivo": {"Caixa": 2, "Renda Fixa Brasil": 10, "Renda Fixa Internacional": 10, "Ações Brasil": 34, "Ações Internacional": 34, "Fundos Imobiliários": 5, "Alternativos": 5}
 }
 portfolio_list = list(portfolio_data.keys())
-
 building_blocks_data = {
     "Caixa": [{"ticker": "Tesouro Selic (LFT)", "name": "Título Público Pós-Fixado", "rationale": "Principal ativo para reserva de emergência e posições de caixa."}],
     "Renda Fixa Brasil": [{"ticker": "IMAB11.SA", "name": "iShares IMA-B Fundo de Índice", "rationale": "Exposição a títulos públicos atrelados à inflação (NTN-Bs)."}],
     "Renda Fixa Internacional": [{"ticker": "BNDW", "name": "Vanguard Total World Bond ETF", "rationale": "ETF globalmente diversificado em títulos de alta qualidade de crédito."}],
     "Ações Brasil": [{"ticker": "BOVA11.SA", "name": "iShares Ibovespa Fundo de Índice", "rationale": "Exposição ampla ao principal índice de ações brasileiro."}],
     "Ações Internacional": [{"ticker": "IVV", "name": "iShares Core S&P 500 ETF", "rationale": "Exposição às 500 maiores empresas dos EUA."}],
-    "Fundos Imobiliários": [{"ticker": "HGLG11.SA", "name": "CSHG Logística FII", "rationale": "Exemplo de FII de 'tijolo' de alta qualidade, focado no setor de galpões logísticos."}],
+    "Fundos Imobiliários": [{"ticker": "HGLG11.SA", "name": "CSHG Logística FII", "rationale": "Exemplo de FII de 'tijolo' de alta qualidade."}],
     "Alternativos": [{"ticker": "GOLD11.SA", "name": "Trend Ouro Fundo de Índice", "rationale": "Exposição ao Ouro como reserva de valor."}]
 }
 
@@ -74,104 +76,71 @@ def get_portfolio_price_data(tickers_list, period="3y"):
     return yf.download(tickers_list, period=period, progress=False)['Close'].dropna()
 
 def calculate_portfolio_risk(prices, weights):
-    if prices.empty or len(prices) < 252: return 0, 0, 0
+    if prices.empty or len(prices) < 252: return 0, 0, 0, pd.Series(dtype='float64', index=prices.columns)
     returns = prices.pct_change().dropna()
     p_return = np.sum(returns.mean() * weights) * 252
-    p_vol = np.sqrt(np.dot(weights.T, np.dot(returns.cov() * 252, weights)))
+    cov_matrix = returns.cov() * 252
+    p_vol = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
     p_sharpe = p_return / p_vol if p_vol > 0 else 0
-    return p_return, p_vol, p_sharpe
+    marginal_contribution = weights * (cov_matrix @ weights) / p_vol
+    risk_contribution_pct = marginal_contribution / p_vol
+    return p_return, p_vol, p_sharpe, risk_contribution_pct
 
-
-# ADICIONE ESTA NOVA FUNÇÃO JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
-
-# SUBSTITUA A FUNÇÃO ANTERIOR POR ESTA VERSÃO CORRIGIDA
-
-@st.cache_data(ttl=86400) # Cache de 1 dia para dados de backtest
+@st.cache_data(ttl=86400)
 def run_backtest(portfolio_df, period="3y"):
-    """
-    Executa o backtest para um portfólio, retornando a performance e métricas.
-    """
     tickers = portfolio_df['ticker'].tolist()
     weights = portfolio_df['weight'].values
-    
-    # Normaliza os pesos para garantir que somem 1
     weights = weights / weights.sum()
-
     try:
         prices = get_portfolio_price_data(tickers, period)
-        if prices.empty:
-            return None
-
-        # --- LÓGICA CORRIGIDA ---
-        # Chama a função de risco UMA VEZ e desempacota os 3 resultados
-        annualized_return, annualized_vol, sharpe_ratio = calculate_portfolio_risk(prices, weights)
-        
-        # Calcula o retorno acumulado separadamente
+        if prices.empty: return None
+        annualized_return, annualized_vol, sharpe_ratio, risk_contribution = calculate_portfolio_risk(prices, weights)
         portfolio_daily_returns = (prices.pct_change().dropna() * weights).sum(axis=1)
         cumulative_returns = (1 + portfolio_daily_returns).cumprod()
         total_return = cumulative_returns.iloc[-1] - 1
-        
-        # Retorna um dicionário com cada métrica sendo um único número
+        risk_contribution.index = tickers
         return {
-            "cumulative_returns": cumulative_returns,
-            "total_return": total_return,
-            "annualized_return": annualized_return,
-            "annualized_vol": annualized_vol,
-            "sharpe_ratio": sharpe_ratio
+            "cumulative_returns": cumulative_returns, "total_return": total_return,
+            "annualized_return": annualized_return, "annualized_vol": annualized_vol,
+            "sharpe_ratio": sharpe_ratio, "risk_contribution": risk_contribution
         }
     except Exception as e:
-        st.error(f"Erro no backtest: {e}")
-        return None
+        st.error(f"Erro no backtest: {e}"); return None
 
-# --- INTERFACE DA APLICAÇÃO ---
+# --- UI DA APLICAÇÃO ---
 st.title("💼 Painel de Wealth Management e Alocação Estratégica")
 st.markdown("Visão geral dos Portfólios Modelo e ferramentas de análise para assessores.")
 st.divider()
 
-# --- FASE 4: QUESTIONÁRIO DE PERFIL DE RISCO (SUITABILITY) ---
-with st.expander("Definir Perfil de Risco do Cliente (Suitability)", expanded=True):
-    st.markdown("Responda às perguntas abaixo para determinar o Portfólio Modelo mais adequado.")
-    
+with st.expander("Definir Perfil de Risco do Cliente (Suitability)"):
+    # (Código do questionário aqui, sem alterações)
     q1_options = {"Longo Prazo (acima de 5 anos)": 30, "Médio Prazo (2 a 5 anos)": 20, "Curto Prazo (até 2 anos)": 10}
     q1 = st.radio("1. Por quanto tempo você pretende manter seus investimentos aplicados?", list(q1_options.keys()), key="q1")
-
     q2_options = {"Compraria mais, aproveitando os preços baixos": 40, "Manteria minha posição, pois invisto para o longo prazo": 20, "Venderia toda a minha posição para evitar mais perdas": 10}
     q2 = st.radio("2. Imagine uma queda de 20% no mercado. Qual seria sua reação mais provável?", list(q2_options.keys()), key="q2")
-
-    q3_options = {"Aumentar meu patrimônio de forma significativa, aceitando mais riscos": 30, "Gerar uma renda complementar, com um balanço entre risco e segurança": 20, "Preservar meu capital com o menor risco possível": 10}
-    q3 = st.radio("3. Qual é o seu principal objetivo com esta carteira de investimentos?", list(q3_options.keys()), key="q3")
-    
+    q3_options = {"Aumentar meu patrimônio de forma significativa": 30, "Gerar uma renda complementar": 20, "Preservar meu capital com o menor risco possível": 10}
+    q3 = st.radio("3. Qual é o seu principal objetivo?", list(q3_options.keys()), key="q3")
     if st.button("Calcular Perfil de Risco"):
         total_score = q1_options[q1] + q2_options[q2] + q3_options[q3]
-        
         if total_score <= 40: profile_name = "Conservador"
         elif total_score <= 60: profile_name = "Moderado"
         elif total_score <= 75: profile_name = "Balanceado"
         elif total_score <= 90: profile_name = "Crescimento"
         else: profile_name = "Agressivo"
-        
         st.session_state.client_profile = profile_name
-        
         st.success(f"### Perfil de Risco Calculado: **{profile_name}**")
-        st.write(f"Sua pontuação foi de **{total_score}** de 100. O portfólio modelo recomendado é o **{profile_name}**. Role para baixo para comparar a carteira do seu cliente com este modelo.")
-
 st.divider()
 
-# --- FASE 1: VISÃO TÁTICA E PORTFÓLIOS MODELO ---
 st.subheader("Alocação Estratégica de Longo Prazo")
 cols = st.columns(len(portfolio_data))
 for i, (portfolio_name, data) in enumerate(portfolio_data.items()):
     with cols[i]:
         fig = create_allocation_chart(portfolio_name, data)
-        # Destaca o portfólio recomendado com uma borda ou outro elemento visual
         if portfolio_name == st.session_state.client_profile:
             st.markdown(f"**_{portfolio_name}_** ⭐")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 st.divider()
 
-# --- FASE 2: BUILDING BLOCKS ---
 st.subheader("Building Blocks: Ativos Recomendados por Classe")
 selected_class = st.selectbox("Escolha a Classe de Ativo:", options=list(building_blocks_data.keys()), key="bb_select")
 if selected_class:
@@ -184,139 +153,58 @@ if selected_class:
             if ".SA" in asset['ticker'].upper() or all(c.isalpha() for c in asset['ticker']):
                 st.link_button("Ver no Yahoo Finance", f"https://finance.yahoo.com/quote/{asset['ticker']}")
         st.divider()
-
-# --- FASE 3: ANALISADOR DE CARTEIRA DO CLIENTE ---
-st.subheader("Analisador de Carteira do Cliente")
-# O selectbox agora usa o perfil calculado como padrão
-default_index = portfolio_list.index(st.session_state.client_profile) if st.session_state.client_profile in portfolio_list else 2
-
-col_input1, col_input2 = st.columns([2, 1])
-with col_input1:
-    portfolio_input = st.text_area("Insira a carteira (um ativo por linha, formato: TICKER,VALOR)", "IVV,50000\nBOVA11.SA,30000\nBNDW,20000\nHGLG11.SA,10000", height=150, key="portfolio_input_area")
-with col_input2:
-    model_to_compare = st.selectbox("Selecione o Portfólio Modelo para Comparação:", options=portfolio_list, index=default_index, key="model_compare_select")
-    analyze_client_button = st.button("Analisar Carteira do Cliente", use_container_width=True)
-
-if analyze_client_button and portfolio_input.strip():
-    try:
-        with st.spinner("Analisando carteira do cliente..."):
-            lines = [line.strip() for line in portfolio_input.strip().split('\n') if line.strip()]
-            portfolio_list_data = [{'ticker': line.split(',')[0].strip().upper(), 'value': float(line.split(',')[1])} for line in lines]
-            
-            client_df = pd.DataFrame(portfolio_list_data)
-            total_value = client_df['value'].sum()
-            client_df['weight'] = client_df['value'] / total_value
-            
-            category_map = bulk_categorize_tickers(tuple(client_df['ticker'].unique()))
-            client_df['asset_class'] = client_df['ticker'].map(category_map)
-            client_allocation = client_df.groupby('asset_class')['weight'].sum() * 100
-            
-            tickers = client_df['ticker'].tolist(); weights = client_df['weight'].values
-            price_data = get_portfolio_price_data(tickers)
-            p_return, p_vol, p_sharpe = calculate_portfolio_risk(price_data, weights)
-            
-            st.markdown("##### Análise da Alocação")
-            col_chart1, col_chart2 = st.columns(2)
-            with col_chart1: st.plotly_chart(create_allocation_chart("Alocação Atual do Cliente", client_allocation), use_container_width=True)
-            with col_chart2: st.plotly_chart(create_allocation_chart(f"Modelo {model_to_compare}", portfolio_data[model_to_compare]), use_container_width=True)
-            
-            st.markdown("##### Métricas de Risco da Carteira do Cliente")
-            risk1, risk2, risk3 = st.columns(3)
-            risk1.metric("Retorno Anualizado", f"{p_return*100:.2f}%")
-            risk2.metric("Volatilidade Anualizada", f"{p_vol*100:.2f}%")
-            risk3.metric("Índice de Sharpe", f"{p_sharpe:.2f}")
-
-    except Exception as e:
-        st.error(f"Ocorreu um erro ao analisar a carteira. Verifique o formato dos dados. Erro: {e}")
-
-# COLE ESTA NOVA SEÇÃO NO FINAL DO SEU ARQUIVO
-
-st.divider()
-
-# --- FASE 5: CONSTRUTOR E SIMULADOR DE PORTFÓLIOS ---
+# --- CONSTRUTOR E SIMULADOR DE PORTFÓLIOS ---
 st.subheader("🛠️ Construtor e Simulador de Portfólios")
-st.markdown("Construa uma carteira a partir dos nossos modelos, faça ajustes táticos e simule a performance histórica.")
+st.markdown("Construa uma carteira a partir dos nossos modelos, faça ajustes táticos e simule a performance e o risco.")
 
-# --- Etapa 1: Seleção do Portfólio Base ---
-st.markdown("##### 1. Selecione um Portfólio Modelo como Base")
-base_model_name = st.selectbox(
-    "Escolha um modelo para começar:",
-    options=list(portfolio_data.keys()),
-    index=2, # Padrão para 'Balanceado'
-    key="base_model_selector"
-)
+base_model_name = st.selectbox("1. Selecione um Portfólio Modelo como Base:", options=list(portfolio_data.keys()), index=2, key="base_model_selector")
 
-# --- Etapa 2: Customização da Carteira ---
 st.markdown("##### 2. Visualize e Customize a Alocação")
-st.caption("A tabela abaixo é editável. Você pode alterar os pesos das classes de ativos ou os tickers dos 'building blocks'. A soma dos pesos deve ser 100%.")
+assets_list = []
+model_allocation = portfolio_data[base_model_name]
+for asset_class, weight in model_allocation.items():
+    if weight > 0:
+        recommended_asset = building_blocks_data[asset_class][0]
+        assets_list.append({"Classe de Ativo": asset_class, "Ticker": recommended_asset['ticker'], "Peso (%)": weight})
+portfolio_editor_df = pd.DataFrame(assets_list)
 
-# Prepara o dataframe do portfólio para edição
-if base_model_name:
-    # Cria um DataFrame com os ativos e pesos do modelo selecionado
-    assets_list = []
-    model_allocation = portfolio_data[base_model_name]
-    for asset_class, weight in model_allocation.items():
-        if weight > 0:
-            # Pega o primeiro 'building block' recomendado para aquela classe
-            recommended_asset = building_blocks_data[asset_class][0]
-            assets_list.append({
-                "Classe de Ativo": asset_class,
-                "Ticker": recommended_asset['ticker'],
-                "Peso (%)": weight
-            })
-    
-    portfolio_editor_df = pd.DataFrame(assets_list)
+edited_portfolio_df = st.data_editor(portfolio_editor_df, num_rows="dynamic", key="portfolio_editor",
+    column_config={"Peso (%)": st.column_config.NumberColumn("Peso (%)", min_value=0, max_value=100, step=1, format="%d%%")})
 
-# Usa o st.data_editor para permitir a edição da carteira
-edited_portfolio_df = st.data_editor(
-    portfolio_editor_df,
-    num_rows="dynamic", # Permite adicionar/remover linhas
-    column_config={
-        "Peso (%)": st.column_config.NumberColumn(
-            "Peso (%)",
-            help="O peso do ativo na carteira. A soma total deve ser 100.",
-            min_value=0,
-            max_value=100,
-            step=1,
-            format="%d%%"
-        )
-    },
-    key="portfolio_editor"
-)
-
-# Validação dos pesos
 total_weight = edited_portfolio_df['Peso (%)'].sum()
 if not np.isclose(total_weight, 100):
-    st.warning(f"A soma dos pesos é de {total_weight:.1f}%. Por favor, ajuste para que a soma seja 100%.")
+    st.warning(f"A soma dos pesos é de {total_weight:.1f}%. Ajuste para 100% para rodar o backtest.")
 
-# --- Etapa 3: Execução do Backtest ---
-st.markdown("##### 3. Execute o Backtest")
-if st.button("Rodar Backtest da Carteira Customizada", disabled=not np.isclose(total_weight, 100)):
-    
-    # Prepara o DataFrame para a função de backtest
-    backtest_input_df = edited_portfolio_df.copy()
-    backtest_input_df.rename(columns={"Ticker": "ticker", "Peso (%)": "weight"}, inplace=True)
-    backtest_input_df['weight'] = backtest_input_df['weight'] / 100 # Converte para decimal
-    
-    # Remove linhas com tickers não-padrão que não podem ser baixados
-    backtest_input_df = backtest_input_df[backtest_input_df['ticker'].str.match(r'^[A-Z0-9\.\^=^-]+$')]
-
+st.markdown("##### 3. Execute a Simulação")
+if st.button("Rodar Simulação da Carteira Customizada", disabled=not np.isclose(total_weight, 100)):
     with st.spinner("Executando simulação histórica..."):
-        backtest_results = run_backtest(backtest_input_df)
+        backtest_input_df = edited_portfolio_df.copy()
+        backtest_input_df.rename(columns={"Ticker": "ticker", "Peso (%)": "weight"}, inplace=True)
+        backtest_input_df['weight'] = backtest_input_df['weight'] / 100
+        backtest_input_df = backtest_input_df[backtest_input_df['ticker'].str.match(r'^[A-Z0-9\.\^=^-]+$')]
+        st.session_state.backtest_results = run_backtest(backtest_input_df)
 
-    if backtest_results:
-        st.subheader("Resultados do Backtest")
-        
-        # Métricas de Performance
-        res1, res2, res3, res4 = st.columns(4)
-        res1.metric("Retorno Total no Período", f"{backtest_results['total_return']*100:.2f}%")
-        res2.metric("Retorno Anualizado", f"{backtest_results['annualized_return']*100:.2f}%")
-        res3.metric("Volatilidade Anualizada", f"{backtest_results['annualized_vol']*100:.2f}%")
-        res4.metric("Índice de Sharpe", f"{backtest_results['sharpe_ratio']:.2f}")
-        
-        # Gráfico de Performance
-        fig = px.line(backtest_results['cumulative_returns'], title="Performance Histórica da Carteira Customizada")
-        fig.update_layout(yaxis_title="Retorno Acumulado", xaxis_title="Data", yaxis_tickformat=".2%")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.error("Não foi possível executar o backtest. Verifique os tickers e tente novamente.")
+if st.session_state.backtest_results:
+    results = st.session_state.backtest_results
+    st.subheader("Resultados da Simulação")
+    
+    st.markdown("###### Performance da Carteira")
+    res1, res2, res3, res4 = st.columns(4)
+    res1.metric("Retorno Total", f"{results['total_return']*100:.2f}%")
+    res2.metric("Retorno Anualizado", f"{results['annualized_return']*100:.2f}%")
+    res3.metric("Volatilidade Anualizada", f"{results['annualized_vol']*100:.2f}%")
+    res4.metric("Índice de Sharpe", f"{results['sharpe_ratio']:.2f}")
+    
+    fig_perf = px.line(results['cumulative_returns'], title="Performance Histórica Acumulada")
+    fig_perf.update_layout(yaxis_title="Retorno Acumulado", yaxis_tickformat=".2%")
+    st.plotly_chart(fig_perf, use_container_width=True)
+
+    st.markdown("###### Análise de Risco")
+    risk_contrib_df = (results['risk_contribution'] * 100).reset_index()
+    risk_contrib_df.columns = ['Ativo', 'Contribuição ao Risco (%)']
+    fig_risk = px.bar(risk_contrib_df.sort_values('Contribuição ao Risco (%)', ascending=False),
+        x='Ativo', y='Contribuição ao Risco (%)', title='Decomposição do Risco da Carteira', text_auto='.2f',
+        color='Contribuição ao Risco (%)', color_continuous_scale='Reds')
+    st.plotly_chart(fig_risk, use_container_width=True)
+    st.info("**Como ler este gráfico:** Ele mostra o quanto cada ativo contribui para a volatilidade total da carteira, considerando não só seu risco individual, mas também sua correlação com os outros ativos.")
+
