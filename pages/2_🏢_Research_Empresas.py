@@ -362,6 +362,8 @@ if st.sidebar.button("Analisar", key="analyze_button"):
     st.session_state.ticker_to_analyze = ticker_symbol_input
     st.session_state.peers_to_analyze = peers_string_input
 
+# NOVO BLOCO OTIMIZADO PARA SUBSTITUIR O ANTIGO
+
 if st.session_state.analysis_run:
     ticker_symbol = st.session_state.ticker_to_analyze
     peers_string = st.session_state.peers_to_analyze
@@ -369,17 +371,27 @@ if st.session_state.analysis_run:
     if not ticker_symbol:
         st.warning("Por favor, digite um ticker principal para analisar.")
     else:
-        info = yf.Ticker(ticker_symbol).info
-        if not info.get('longName'):
-            st.error(f"Ticker '{ticker_symbol}' não encontrado ou inválido.")
-            st.session_state.analysis_run = False
-        else:
-            with st.spinner("Analisando... Este processo pode levar um momento."):
+        with st.spinner("Buscando e analisando dados..."):
+            # Chamada única à nossa nova função com cache
+            financial_data = get_all_financial_data(ticker_symbol)
+
+            # Verifica se a busca deu certo
+            if financial_data.get("error"):
+                st.error(financial_data["error"])
+                st.session_state.analysis_run = False
+            else:
+                # Desempacota os dados para as variáveis existentes
+                info = financial_data["info"]
+                income_statement = financial_data["income_stmt"]
+                balance_sheet = financial_data["balance_sheet"]
+                cash_flow = financial_data["cash_flow"]
+
+                # O resto do seu código de análise continua aqui, sem alterações...
                 dcf_data = get_dcf_data_from_yf(ticker_symbol)
                 peer_tickers = [p.strip() for p in peers_string.split(",")] if peers_string else []
                 comps_df = get_key_stats(peer_tickers)
 
-            st.header(f"Análise de {info['longName']} ({info['symbol']})")
+                st.header(f"Análise de {info['longName']} ({info['symbol']})")
 
             st.subheader(f"Rating Proprietário (PAG Score)")
             quality_score, quality_breakdown = calculate_quality_score(info, dcf_data)
