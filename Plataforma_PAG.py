@@ -20,9 +20,6 @@ authenticator = stauth.Authenticate(
     config['cookie']['expiry_days']
 )
 
-# Renderiza o formulário de login no centro da página
-name, authentication_status, username = authenticator.login('main')
-
 # --- CONTROLE DE ACESSO ---
 # Bloco corrigido
 authenticator.login()
