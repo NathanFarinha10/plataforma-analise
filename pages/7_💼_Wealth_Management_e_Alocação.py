@@ -1,4 +1,4 @@
-# pages/7_💼_Wealth_Management.py (Versão 4.0 - Final com Suitability)
+# pages/7_💼_Wealth_Management.py (Versão 4.0 - Final com Suitability Integrado)
 
 import streamlit as st
 import pandas as pd
@@ -14,7 +14,7 @@ st.set_page_config(page_title="Wealth Management - Alocação", page_icon="💼"
 # --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
 # Usado para guardar o perfil do cliente entre as interações
 if 'client_profile' not in st.session_state:
-    st.session_state.client_profile = "Balanceado" # Começa com um padrão
+    st.session_state.client_profile = "Balanceado" # Começa com um perfil padrão
 
 # --- DADOS: ALOCAÇÃO ESTRATÉGICA E BUILDING BLOCKS ---
 portfolio_data = {
@@ -32,7 +32,7 @@ building_blocks_data = {
     "Renda Fixa Internacional": [{"ticker": "BNDW", "name": "Vanguard Total World Bond ETF", "rationale": "ETF globalmente diversificado em títulos de alta qualidade de crédito."}],
     "Ações Brasil": [{"ticker": "BOVA11.SA", "name": "iShares Ibovespa Fundo de Índice", "rationale": "Exposição ampla ao principal índice de ações brasileiro."}],
     "Ações Internacional": [{"ticker": "IVV", "name": "iShares Core S&P 500 ETF", "rationale": "Exposição às 500 maiores empresas dos EUA."}],
-    "Fundos Imobiliários": [{"ticker": "IFIX", "name": "Índice de Fundos de Investimentos Imobiliários", "rationale": "Referência do setor. Buscar FIIs diversificados."}],
+    "Fundos Imobiliários": [{"ticker": "HGLG11.SA", "name": "CSHG Logística FII", "rationale": "Exemplo de FII de 'tijolo' de alta qualidade, focado no setor de galpões logísticos."}],
     "Alternativos": [{"ticker": "GOLD11.SA", "name": "Trend Ouro Fundo de Índice", "rationale": "Exposição ao Ouro como reserva de valor."}]
 }
 
@@ -81,23 +81,23 @@ def calculate_portfolio_risk(prices, weights):
     p_sharpe = p_return / p_vol if p_vol > 0 else 0
     return p_return, p_vol, p_sharpe
 
-# --- UI DA APLICAÇÃO ---
+# --- INTERFACE DA APLICAÇÃO ---
 st.title("💼 Painel de Wealth Management e Alocação Estratégica")
 st.markdown("Visão geral dos Portfólios Modelo e ferramentas de análise para assessores.")
 st.divider()
 
 # --- FASE 4: QUESTIONÁRIO DE PERFIL DE RISCO (SUITABILITY) ---
-with st.expander("Definir Perfil de Risco do Cliente (Suitability)", expanded=False):
+with st.expander("Definir Perfil de Risco do Cliente (Suitability)", expanded=True):
     st.markdown("Responda às perguntas abaixo para determinar o Portfólio Modelo mais adequado.")
     
     q1_options = {"Longo Prazo (acima de 5 anos)": 30, "Médio Prazo (2 a 5 anos)": 20, "Curto Prazo (até 2 anos)": 10}
-    q1 = st.radio("1. Por quanto tempo você pretende manter seus investimentos aplicados?", list(q1_options.keys()))
+    q1 = st.radio("1. Por quanto tempo você pretende manter seus investimentos aplicados?", list(q1_options.keys()), key="q1")
 
     q2_options = {"Compraria mais, aproveitando os preços baixos": 40, "Manteria minha posição, pois invisto para o longo prazo": 20, "Venderia toda a minha posição para evitar mais perdas": 10}
-    q2 = st.radio("2. Imagine uma queda de 20% no mercado. Qual seria sua reação mais provável?", list(q2_options.keys()))
+    q2 = st.radio("2. Imagine uma queda de 20% no mercado. Qual seria sua reação mais provável?", list(q2_options.keys()), key="q2")
 
     q3_options = {"Aumentar meu patrimônio de forma significativa, aceitando mais riscos": 30, "Gerar uma renda complementar, com um balanço entre risco e segurança": 20, "Preservar meu capital com o menor risco possível": 10}
-    q3 = st.radio("3. Qual é o seu principal objetivo com esta carteira de investimentos?", list(q3_options.keys()))
+    q3 = st.radio("3. Qual é o seu principal objetivo com esta carteira de investimentos?", list(q3_options.keys()), key="q3")
     
     if st.button("Calcular Perfil de Risco"):
         total_score = q1_options[q1] + q2_options[q2] + q3_options[q3]
@@ -108,7 +108,6 @@ with st.expander("Definir Perfil de Risco do Cliente (Suitability)", expanded=Fa
         elif total_score <= 90: profile_name = "Crescimento"
         else: profile_name = "Agressivo"
         
-        # Salva o perfil calculado no estado da sessão para ser usado por outros componentes
         st.session_state.client_profile = profile_name
         
         st.success(f"### Perfil de Risco Calculado: **{profile_name}**")
@@ -116,23 +115,23 @@ with st.expander("Definir Perfil de Risco do Cliente (Suitability)", expanded=Fa
 
 st.divider()
 
-# --- VISÃO TÁTICA E PORTFÓLIOS MODELO ---
+# --- FASE 1: VISÃO TÁTICA E PORTFÓLIOS MODELO ---
 st.subheader("Alocação Estratégica de Longo Prazo")
 cols = st.columns(len(portfolio_data))
 for i, (portfolio_name, data) in enumerate(portfolio_data.items()):
     with cols[i]:
         fig = create_allocation_chart(portfolio_name, data)
-        # Destaca o portfólio recomendado
+        # Destaca o portfólio recomendado com uma borda ou outro elemento visual
         if portfolio_name == st.session_state.client_profile:
-            st.markdown(f"_{portfolio_name}_") # Pode ser alterado para um destaque melhor
+            st.markdown(f"**_{portfolio_name}_** ⭐")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.plotly_chart(fig, use_container_width=True)
 st.divider()
 
-# --- BUILDING BLOCKS ---
+# --- FASE 2: BUILDING BLOCKS ---
 st.subheader("Building Blocks: Ativos Recomendados por Classe")
-selected_class = st.selectbox("Escolha a Classe de Ativo:", options=list(building_blocks_data.keys()))
+selected_class = st.selectbox("Escolha a Classe de Ativo:", options=list(building_blocks_data.keys()), key="bb_select")
 if selected_class:
     st.markdown(f"#### Ativos para a classe: **{selected_class}**")
     for asset in building_blocks_data.get(selected_class, []):
@@ -140,37 +139,36 @@ if selected_class:
         with col1: st.metric("Ticker", asset["ticker"])
         with col2:
             st.markdown(f"**{asset['name']}**"); st.caption(asset['rationale'])
-            if ".SA" in asset['ticker'] or all(c.isalpha() for c in asset['ticker']):
+            if ".SA" in asset['ticker'].upper() or all(c.isalpha() for c in asset['ticker']):
                 st.link_button("Ver no Yahoo Finance", f"https://finance.yahoo.com/quote/{asset['ticker']}")
         st.divider()
 
-st.divider()
-
-# --- ANALISADOR DE CARTEIRA DO CLIENTE ---
+# --- FASE 3: ANALISADOR DE CARTEIRA DO CLIENTE ---
 st.subheader("Analisador de Carteira do Cliente")
-# --- MODIFICAÇÃO PARA INTEGRAÇÃO ---
 # O selectbox agora usa o perfil calculado como padrão
 default_index = portfolio_list.index(st.session_state.client_profile) if st.session_state.client_profile in portfolio_list else 2
 
 col_input1, col_input2 = st.columns([2, 1])
 with col_input1:
-    portfolio_input = st.text_area("Insira a carteira (um ativo por linha, formato: TICKER,VALOR)", "IVV,50000\nBOVA11.SA,30000\nBNDW,20000\nHGLG11.SA,10000", height=150)
+    portfolio_input = st.text_area("Insira a carteira (um ativo por linha, formato: TICKER,VALOR)", "IVV,50000\nBOVA11.SA,30000\nBNDW,20000\nHGLG11.SA,10000", height=150, key="portfolio_input_area")
 with col_input2:
-    model_to_compare = st.selectbox("Selecione o Portfólio Modelo para Comparação:", options=portfolio_list, index=default_index)
+    model_to_compare = st.selectbox("Selecione o Portfólio Modelo para Comparação:", options=portfolio_list, index=default_index, key="model_compare_select")
     analyze_client_button = st.button("Analisar Carteira do Cliente", use_container_width=True)
 
 if analyze_client_button and portfolio_input.strip():
     try:
         with st.spinner("Analisando carteira do cliente..."):
-            # ... (todo o resto do código do analisador permanece o mesmo) ...
-            lines = [line.strip() for line in portfolio_input.strip().split('\n')]
+            lines = [line.strip() for line in portfolio_input.strip().split('\n') if line.strip()]
             portfolio_list_data = [{'ticker': line.split(',')[0].strip().upper(), 'value': float(line.split(',')[1])} for line in lines]
+            
             client_df = pd.DataFrame(portfolio_list_data)
             total_value = client_df['value'].sum()
             client_df['weight'] = client_df['value'] / total_value
+            
             category_map = bulk_categorize_tickers(tuple(client_df['ticker'].unique()))
             client_df['asset_class'] = client_df['ticker'].map(category_map)
             client_allocation = client_df.groupby('asset_class')['weight'].sum() * 100
+            
             tickers = client_df['ticker'].tolist(); weights = client_df['weight'].values
             price_data = get_portfolio_price_data(tickers)
             p_return, p_vol, p_sharpe = calculate_portfolio_risk(price_data, weights)
@@ -188,4 +186,3 @@ if analyze_client_button and portfolio_input.strip():
 
     except Exception as e:
         st.error(f"Ocorreu um erro ao analisar a carteira. Verifique o formato dos dados. Erro: {e}")
-
