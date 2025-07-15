@@ -3,6 +3,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from datetime import datetime
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="Wealth Management - Alocação", page_icon="💼", layout="wide")
