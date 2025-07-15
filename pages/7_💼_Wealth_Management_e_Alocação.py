@@ -121,19 +121,35 @@ def get_asset_class(info, ticker_symbol):
         return "Ações Internacional"
     return "Alternativos"
 
+# SUBSTITUA A FUNÇÃO 'bulk_categorize_tickers' PELA VERSÃO ABAIXO
+
 @st.cache_data
 def bulk_categorize_tickers(tickers_list):
     """
-    Busca as informações e classifica uma lista de tickers, com pausas para evitar rate limit.
+    VERSÃO DE DIAGNÓSTICO: Busca as informações e classifica uma lista de tickers,
+    reportando qualquer erro que encontrar.
     """
     categories = {}
+    st.info("Iniciando diagnóstico de categorização de ativos...")
+    
     for ticker in tickers_list:
         try:
             info = yf.Ticker(ticker).info
+            # Forçamos uma verificação para garantir que 'info' não está vazio
+            if not info or 'quoteType' not in info:
+                # Se não houver dados, consideramos um erro
+                raise ValueError("Dicionário 'info' retornado vazio ou sem 'quoteType'.")
+                
             categories[ticker] = get_asset_class(info, ticker)
-            time.sleep(0.1) # Adiciona uma pequena pausa de 0.1s entre as chamadas
-        except Exception:
+            st.write(f"✅ Sucesso ao classificar {ticker} como: {categories[ticker]}")
+
+        except Exception as e:
+            # PONTO MAIS IMPORTANTE: EXIBE O ERRO NA TELA
+            st.warning(f"⚠️ Falha ao processar o ticker '{ticker}'. O erro foi:")
+            st.error(f"{e}") # Exibe o erro exato que a API retornou
             categories[ticker] = "Não Classificado"
+            
+    st.info("Diagnóstico finalizado.")
     return categories
 
 def calculate_portfolio_risk(prices, weights):
