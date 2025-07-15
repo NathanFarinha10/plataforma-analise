@@ -1,4 +1,4 @@
-# 1_📈_Análise_Macro.py (Versão Estável com Heatmap)
+# 1_📈_Análise_Macro.py (Versão 2.0 com Mercados Globais)
 
 import streamlit as st
 import pandas as pd
@@ -6,128 +6,172 @@ from fredapi import Fred
 from bcb import sgs
 import plotly.express as px
 from datetime import datetime
+import yfinance as yf
 import numpy as np
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
 
 # --- INICIALIZAÇÃO DAS APIS ---
-try:
-    api_key = st.secrets.get("FRED_API_KEY")
-    if api_key:
-        fred = Fred(api_key=api_key)
-    else:
-        st.error("Chave da API do FRED não configurada."); st.stop()
-except Exception as e:
-    st.error(f"Falha ao inicializar API do FRED: {e}"); st.stop()
+@st.cache_resource
+def get_fred_api():
+    """Inicializa a conexão com a API do FRED."""
+    try:
+        api_key = st.secrets.get("FRED_API_KEY")
+        if not api_key:
+            st.error("Chave da API do FRED (FRED_API_KEY) não configurada nos segredos do Streamlit.")
+            st.stop()
+        return Fred(api_key=api_key)
+    except Exception as e:
+        st.error(f"Falha ao inicializar API do FRED: {e}")
+        st.stop()
+fred = get_fred_api()
 
-# --- DICIONÁRIOS DE CÓDIGOS ---
-fred_codes_us = {
-    "Atividade": {"PIB (Cresc. Anual %)": "A191RL1Q225SBEA", "Produção Industrial (Variação Anual %)": "INDPRO", "Vendas no Varejo (Variação Anual %)": "RSAFS", "Confiança do Consumidor": "UMCSENT"},
-    "Inflação e Juros": {"Inflação ao Consumidor (CPI YoY)": "CPIAUCSL", "Inflação ao Produtor (PPI YoY)": "PPIACO", "Taxa de Juros (Fed Funds)": "FEDFUNDS", "Juro 10 Anos": "DGS10", "Juro 2 Anos": "DGS2"},
-    "Emprego": {"Taxa de Desemprego": "UNRATE", "Criação de Vagas (Non-Farm)": "PAYEMS"},
-    "Setor Externo": {"Balança Comercial": "BOPGSTB"}
-}
-bcb_codes_br = {
-    "Atividade": {"IBC-Br (Proxy do PIB)": 24368, "Produção Industrial (Var. 12m)": 21859, "Vendas no Varejo (Var. 12m)": 1455},
-    "Inflação e Juros": {"IPCA (Inflação Anual %)": 433, "IGP-M (Anual %)": 189, "Meta Taxa Selic": 432},
-    "Emprego": {"Taxa de Desemprego (PNAD Contínua)": 24369},
-    "Setor Externo": {"Balança Comercial (Saldo em USD Milhões)": 2270}
-}
-heatmap_indicators = {
-    'PMI Industrial (ISM)': ('ISM', 'level'), 'PMI de Serviços (ISM)': ('NMFBACI', 'level'),
-    'Otimismo Pequenas Empresas (NFIB)': ('NFIB', 'level'), 'Pedidos Iniciais de Seg. Desemprego': ('ICSA', 'level_inv'),
-    'Taxa de Desemprego': ('UNRATE', 'level_inv'), 'Inflação ao Consumidor (CPI YoY)': ('CPIAUCSL', 'yoy'),
-    'Core CPI (YoY)': ('CORESTICKM159SFRBATL', 'yoy'), 'Inflação ao Produtor (PPI YoY)': ('PPIACO', 'yoy'),
-    'Vendas no Varejo (YoY)': ('RSAFS', 'yoy'), 'Produção Industrial (YoY)': ('INDPRO', 'yoy'),
-    'Construção de Novas Casas': ('HOUST', 'level'), 'Licenças de Construção': ('PERMIT', 'level'),
-    'Confiança do Consumidor': ('UMCSENT', 'level'), 'Spread da Curva de Juros (10Y-2Y)': ('T10Y2Y', 'level'),
-    'Spread de Crédito High-Yield': ('BAMLH0A0HYM2', 'level_inv'), 'Índice de Volatilidade (VIX)': ('VIXCLS', 'level_inv')
-}
+# --- FUNÇÕES AUXILIARES ---
+@st.cache_data(ttl=3600)
+def fetch_fred_series(code, start_date):
+    """Busca uma única série do FRED."""
+    return fred.get_series(code, start_date)
 
-# --- FUNÇÕES ---
-@st.cache_data
-def fetch_fred_series(series_code, start_date, end_date):
-    try: return fred.get_series(series_code, start_time=start_date, end_time=end_date)
-    except Exception: return pd.Series(dtype=float)
+@st.cache_data(ttl=3600)
+def fetch_bcb_series(code, start_date):
+    """Busca uma única série do BCB SGS."""
+    return sgs.get({code: code}, start=start_date)[code]
 
-@st.cache_data
-def fetch_bcb_series(series_code, start_date, end_date):
-    try: return sgs.get({'code': series_code}, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
-    except Exception: return pd.DataFrame()
+@st.cache_data(ttl=86400)
+def fetch_market_data(tickers, period="5y"):
+    """Baixa dados de mercado do Yahoo Finance."""
+    return yf.download(tickers, period=period, progress=False)['Close']
 
-@st.cache_data
-def calculate_heatmap_data(indicators, start_date, end_date):
-    df_raw = pd.DataFrame(); [df_raw.update({name: s.resample('M').last()}) for name, (code, _) in indicators.items() if not (s := fetch_fred_series(code, start_date, end_date)).empty]
-    if df_raw.empty: return pd.DataFrame()
-    df_transformed = pd.DataFrame(); [df_transformed.update({name: s.pct_change(12) * 100 if t == 'yoy' else (s * -1 if t == 'level_inv' else s)}) for name, (_, t) in indicators.items() if name in df_raw.columns and not (s := df_raw[name].ffill()).empty]
-    return df_transformed.rolling(window=120, min_periods=24).rank(pct=True) * 100
+def plot_indicator(data, title, y_label="Valor"):
+    """Função genérica para plotar um gráfico de área."""
+    if data is None or data.empty:
+        st.warning(f"Não foi possível carregar os dados para {title}.")
+        return
+    fig = px.area(data, title=title, labels={"value": y_label, "index": "Data"})
+    fig.update_layout(showlegend=False)
+    st.plotly_chart(fig, use_container_width=True)
 
-def plot_indicator(data, title, key_suffix):
-    if data.empty: st.info(f"Dados para '{title}' não disponíveis."); return
-    fig = px.line(data, title=title); fig.update_layout(showlegend=False, xaxis_title="Data", yaxis_title="Valor")
-    st.plotly_chart(fig, use_container_width=True, key=f"plotly_{key_suffix}")
+# --- UI DA APLICAÇÃO ---
+st.title("🌍 Painel de Análise Macroeconômica")
+start_date = "2010-01-01"
 
-# --- UI E LÓGICA PRINCIPAL ---
-st.title("Cockpit Macroeconômico")
-st.sidebar.title("Painel de Controle")
-country_selection = st.sidebar.radio("Escolha a Economia para Análise", ["🇧🇷 Brasil", "🇺🇸 EUA"])
-st.sidebar.markdown("---")
-st.sidebar.header("Filtros de Período")
-start_date = st.sidebar.date_input('Data de Início', value=pd.to_datetime('2010-01-01'))
-end_date = st.sidebar.date_input('Data de Fim', value=datetime.today())
+tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unidos", "🌐 Mercados Globais"])
 
-if "Brasil" in country_selection:
-    st.header("Análise Detalhada: 🇧🇷 Brasil")
-    tabs = st.tabs(["Atividade", "Inflação e Juros", "Emprego", "Setor Externo"])
-    with tabs[0]:
-        with st.spinner("Carregando dados do BCB..."):
-            for name, code in bcb_codes_br["Atividade"].items(): plot_indicator(fetch_bcb_series(code, start_date, end_date), name, key_suffix=f"br_act_{code}")
-    with tabs[1]:
-        with st.spinner("Carregando dados do BCB..."):
-            for name, code in bcb_codes_br["Inflação e Juros"].items():
-                data = fetch_bcb_series(code, start_date, end_date)
-                if not data.empty:
-                    data = data.iloc[:, 0]
-                    if name in ["IPCA (Inflação Anual %)", "IGP-M (Anual %)"]: data = ((1 + data/100).rolling(window=12).apply(np.prod, raw=True) - 1) * 100
-                    plot_indicator(data.dropna(), name, key_suffix=f"br_inf_{code}")
-    with tabs[2]:
-        with st.spinner("Carregando dados do BCB..."):
-            for name, code in bcb_codes_br["Emprego"].items(): plot_indicator(fetch_bcb_series(code, start_date, end_date), name, key_suffix=f"br_emp_{code}")
-    with tabs[3]:
-        with st.spinner("Carregando dados do BCB..."):
-            for name, code in bcb_codes_br["Setor Externo"].items(): plot_indicator(fetch_bcb_series(code, start_date, end_date), name, key_suffix=f"br_ext_{code}")
+# --- ABA BRASIL ---
+with tab_br:
+    st.header("Principais Indicadores do Brasil")
+    subtab_br_activity, subtab_br_inflation = st.tabs(["Atividade e Emprego", "Inflação e Juros"])
+    
+    with subtab_br_activity:
+        st.subheader("Atividade Econômica")
+        plot_indicator(fetch_bcb_series(24369, start_date).pct_change(12).dropna() * 100, "IBC-Br (Prévia do PIB, Var. Anual %)", "Variação %")
+        plot_indicator(fetch_bcb_series(1473, start_date).pct_change(12).dropna() * 100, "Vendas no Varejo (Var. Anual %)", "Variação %")
+        
+        st.subheader("Emprego")
+        plot_indicator(fetch_bcb_series(24369, start_date), "Taxa de Desemprego (PNADC %)", "% da Força de Trabalho")
 
-elif "EUA" in country_selection:
-    st.header("Análise Detalhada: 🇺🇸 EUA")
-    tabs = st.tabs(["🔥 Heatmap", "Atividade", "Inflação e Juros", "Emprego", "Setor Externo"])
-    with tabs[0]:
-        st.subheader("Diagnóstico Visual da Economia");
-        with st.spinner("Calculando o Heatmap dinâmico..."):
-            heatmap_data = calculate_heatmap_data(heatmap_indicators, start_date, end_date)
-            if not heatmap_data.empty:
-                heatmap_display = heatmap_data.last('36M').dropna(how='all').T
-                styled_df = heatmap_display.style.background_gradient(cmap='coolwarm', axis=1).format("{:.0f}", na_rep="-").set_properties(**{'width': '60px', 'text-align': 'center'})
-                st.dataframe(styled_df, use_container_width=True)
-                st.caption("Valores representam o percentil do indicador em uma janela móvel de 10 anos.")
-            else: st.warning("Não foi possível gerar o heatmap.")
-    with tabs[1]:
-        for name, code in fred_codes_us["Atividade"].items():
-            data = fetch_fred_series(code, start_date, end_date)
-            if name in ["Produção Industrial (Variação Anual %)", "Vendas no Varejo (Variação Anual %)"]:
-                if not data.empty: data = data.pct_change(12).dropna() * 100
-            plot_indicator(data, name, key_suffix=f"us_act_{code}")
-    with tabs[2]:
-        for name, code in fred_codes_us["Inflação e Juros"].items():
-            if "Juro" not in name: plot_indicator(fetch_fred_series(code, start_date, end_date), name, key_suffix=f"us_inf_{code}")
-        st.subheader("Curva de Juros (Yield Curve)")
-        juro_10a = fetch_fred_series(fred_codes_us["Inflação e Juros"]["Juro 10 Anos"], start_date, end_date)
-        juro_2a = fetch_fred_series(fred_codes_us["Inflação e Juros"]["Juro 2 Anos"], start_date, end_date)
+    with subtab_br_inflation:
+        st.subheader("Inflação")
+        plot_indicator(fetch_bcb_series(13522, start_date), "IPCA (Inflação ao Consumidor, Acum. 12M %)", "Variação %")
+        
+        st.subheader("Taxa de Juros")
+        plot_indicator(fetch_bcb_series(432, start_date), "Taxa Selic (Anualizada %)", "Taxa %")
+
+# --- ABA EUA ---
+with tab_us:
+    st.header("Principais Indicadores dos Estados Unidos")
+    subtab_us_activity, subtab_us_inflation, subtab_us_yield = st.tabs(["Atividade e Emprego", "Inflação e Juros", "Curva de Juros"])
+
+    with subtab_us_activity:
+        st.subheader("Atividade Econômica")
+        plot_indicator(fetch_fred_series("GDPC1", start_date).pct_change(4).dropna() * 100, "PIB Real (Var. Anual %)", "Variação %")
+        plot_indicator(fetch_fred_series("INDPRO", start_date).pct_change(12).dropna() * 100, "Produção Industrial (Var. Anual %)", "Variação %")
+
+        st.subheader("Emprego")
+        plot_indicator(fetch_fred_series("UNRATE", start_date), "Taxa de Desemprego (%)", "% da Força de Trabalho")
+
+    with subtab_us_inflation:
+        st.subheader("Inflação")
+        plot_indicator(fetch_fred_series("CPIAUCSL", start_date).pct_change(12).dropna() * 100, "CPI (Inflação ao Consumidor, Var. Anual %)", "Variação %")
+
+        st.subheader("Taxa de Juros")
+        plot_indicator(fetch_fred_series("FEDFUNDS", start_date), "Federal Funds Rate (%)", "Taxa %")
+    
+    with subtab_us_yield:
+        st.subheader("Spread da Curva de Juros (10 Anos - 2 Anos)")
+        juro_10a = fetch_fred_series("DGS10", start_date)
+        juro_2a = fetch_fred_series("DGS2", start_date)
         if not juro_10a.empty and not juro_2a.empty:
             yield_spread = (juro_10a - juro_2a).dropna()
-            fig = px.area(yield_spread, title="Spread 10 Anos - 2 Anos (EUA)"); fig.add_hline(y=0, line_dash="dash", line_color="red"); fig.update_layout(showlegend=False); st.plotly_chart(fig, use_container_width=True, key="yield_curve")
-            st.caption("Inversão da curva (valores < 0) é um forte indicador de recessão futura.")
-    with tabs[3]:
-        for name, code in fred_codes_us["Emprego"].items(): plot_indicator(fetch_fred_series(code, start_date, end_date), name, key_suffix=f"us_emp_{code}")
-    with tabs[4]:
-        for name, code in fred_codes_us["Setor Externo"].items(): plot_indicator(fetch_fred_series(code, start_date, end_date), name, key_suffix=f"us_ext_{code}")
+            fig = px.area(yield_spread, title="Spread 10 Anos - 2 Anos (EUA)")
+            fig.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Inversão (Sinal de Recessão)")
+            fig.update_layout(showlegend=False, yaxis_title="Diferença Percentual")
+            st.plotly_chart(fig, use_container_width=True)
+
+# --- ABA MERCADOS GLOBAIS ---
+with tab_global:
+    st.header("Índices e Indicadores de Mercado Global")
+    
+    subtab_equity, subtab_commodities, subtab_risk, subtab_valuation = st.tabs(["Índices de Ações", "Commodities & Moedas", "Risco & Volatilidade", "Valuation"])
+
+    with subtab_equity:
+        st.subheader("Performance Comparada de Índices de Ações")
+        equity_tickers = {
+            "S&P 500 (EUA)": "^GSPC", "Ibovespa (Brasil)": "^BVSP", "Nasdaq (EUA Tech)": "^IXIC",
+            "DAX (Alemanha)": "^GDAXI", "Nikkei 225 (Japão)": "^N225", "FTSE 100 (Reino Unido)": "^FTSE"
+        }
+        selected_indices = st.multiselect("Selecione os índices para comparar:", options=list(equity_tickers.keys()), default=["S&P 500 (EUA)", "Ibovespa (Brasil)", "Nasdaq (EUA Tech)"])
+        
+        if selected_indices:
+            tickers_to_fetch = [equity_tickers[i] for i in selected_indices]
+            market_data = fetch_market_data(tickers_to_fetch)
+            if not market_data.empty:
+                normalized_data = (market_data / market_data.dropna().iloc[0]) * 100
+                fig = px.line(normalized_data, title="Performance Normalizada (Base 100)")
+                fig.update_layout(yaxis_title="Performance (Base 100)", xaxis_title="Data", legend_title="Índice")
+                st.plotly_chart(fig, use_container_width=True)
+
+    with subtab_commodities:
+        st.subheader("Preços de Commodities e Taxas de Câmbio")
+        col1, col2 = st.columns(2)
+        with col1:
+            commodity_tickers = {"Petróleo WTI": "CL=F", "Ouro": "GC=F", "Cobre": "HG=F"}
+            commodity_data = fetch_market_data(list(commodity_tickers.values()))
+            if not commodity_data.empty:
+                commodity_data.rename(columns=lambda c: next(k for k, v in commodity_tickers.items() if v == c), inplace=True)
+                st.plotly_chart(px.line(commodity_data, title="Evolução de Commodities"), use_container_width=True)
+        with col2:
+            currency_tickers = {"Dólar vs Real": "BRL=X", "Euro vs Dólar": "EURUSD=X", "Dólar vs Iene": "JPY=X"}
+            currency_data = fetch_market_data(list(currency_tickers.values()))
+            if not currency_data.empty:
+                currency_data.rename(columns=lambda c: next(k for k, v in currency_tickers.items() if v == c), inplace=True)
+                st.plotly_chart(px.line(currency_data, title="Evolução de Câmbio"), use_container_width=True)
+
+    with subtab_risk:
+        st.subheader("Medidores de Risco de Mercado")
+        vix_data = fetch_market_data(["^VIX"])
+        if not vix_data.empty:
+            fig = px.area(vix_data, title="Índice de Volatilidade VIX ('Índice do Medo')")
+            fig.add_hline(y=20, line_dash="dash", line_color="gray", annotation_text="Nível Normal")
+            fig.add_hline(y=30, line_dash="dash", line_color="red", annotation_text="Nível Alto (Estresse)")
+            fig.update_layout(showlegend=False, yaxis_title="Pontos do Índice")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        btc_data = fetch_market_data(["BTC-USD"])
+        if not btc_data.empty:
+            st.plotly_chart(px.line(btc_data, title="Preço do Bitcoin (USD) - Proxy de Apetite a Risco"), use_container_width=True)
+
+    with subtab_valuation:
+        st.subheader("Prêmio de Risco do Equity (Equity Risk Premium - ERP)")
+        st.caption("Compara o 'retorno' da bolsa (Earnings Yield = 1 / P/L) com o retorno de um título seguro (Juro Real 10 Anos). Um prêmio alto sugere que as ações estão atrativas em relação à renda fixa.")
+        
+        sp500_pe_ratio = fetch_fred_series("MULTPL/SP500_PE_RATIO_MONTH", start_date)
+        real_yield = fetch_fred_series("DFII10", start_date)
+        
+        if not sp500_pe_ratio.empty and not real_yield.empty:
+            earnings_yield = (1 / sp500_pe_ratio) * 100
+            df_erp = pd.DataFrame({"Earnings Yield (Bolsa)": earnings_yield, "Juro Real 10 Anos (Renda Fixa)": real_yield}).dropna()
+            fig = px.line(df_erp, title="Earnings Yield (S&P 500) vs. Juro Real (Tesouro EUA)")
+            fig.update_layout(yaxis_title="Taxa (%)", xaxis_title="Data", legend_title="Indicador")
+            st.plotly_chart(fig, use_container_width=True)
