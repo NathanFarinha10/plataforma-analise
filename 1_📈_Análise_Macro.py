@@ -1,4 +1,4 @@
-# 1_📈_Análise_Macro.py (Versão 2.0 com Mercados Globais)
+# 1_📈_Análise_Macro.py (Versão 3.1 - Final com Visão do Banco Central)
 
 import streamlit as st
 import pandas as pd
@@ -8,6 +8,7 @@ import plotly.express as px
 from datetime import datetime
 import yfinance as yf
 import numpy as np
+import re
 
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
@@ -30,31 +31,31 @@ fred = get_fred_api()
 # --- FUNÇÕES AUXILIARES ---
 @st.cache_data(ttl=3600)
 def fetch_fred_series(code, start_date):
-    """Busca uma única série do FRED."""
-    return fred.get_series(code, start_date)
+    """Busca uma única série do FRED de forma robusta."""
+    try:
+        return fred.get_series(code, start_date)
+    except Exception:
+        return pd.Series(dtype='float64')
 
 @st.cache_data(ttl=3600)
 def fetch_bcb_series(code, start_date):
     """Busca uma única série do BCB SGS de forma robusta."""
     try:
-        # Tenta buscar os dados
         df = sgs.get({str(code): code}, start=start_date)
-        
-        # Verifica se o dataframe não está vazio e se a coluna esperada existe
         if not df.empty and str(code) in df.columns:
-            return df[str(code)] # Retorna a série de dados
+            return df[str(code)]
         else:
-            # Se não encontrar, retorna uma Série vazia para evitar erros
             return pd.Series(dtype='float64')
-            
     except Exception:
-        # Em caso de qualquer outro erro na API, também retorna uma série vazia
         return pd.Series(dtype='float64')
 
 @st.cache_data(ttl=86400)
 def fetch_market_data(tickers, period="5y"):
-    """Baixa dados de mercado do Yahoo Finance."""
-    return yf.download(tickers, period=period, progress=False)['Close']
+    """Baixa dados de mercado do Yahoo Finance de forma robusta."""
+    try:
+        return yf.download(tickers, period=period, progress=False)['Close']
+    except Exception:
+        return pd.DataFrame()
 
 def plot_indicator(data, title, y_label="Valor"):
     """Função genérica para plotar um gráfico de área."""
@@ -65,6 +66,23 @@ def plot_indicator(data, title, y_label="Valor"):
     fig.update_layout(showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
+def analyze_central_bank_discourse(text, lang='pt'):
+    """Analisa o texto de atas de política monetária e retorna scores Hawkish/Dovish."""
+    text = text.lower()
+    text = re.sub(r'\d+', '', text)
+    
+    if lang == 'pt':
+        hawkish_words = ['inflação', 'risco', 'preocupação', 'desancoragem', 'expectativas', 'cautela', 'perseverança', 'serenidade', 'aperto', 'restritiva', 'incerteza', 'desafios']
+        dovish_words = ['crescimento', 'atividade', 'hiato', 'ociosidade', 'arrefecimento', 'desaceleração', 'flexibilização', 'estímulo', 'progresso']
+    else: # English for FOMC
+        hawkish_words = ['inflation', 'risk', 'tightening', 'restrictive', 'concern', 'hike', 'vigilance', 'uncertainty', 'upside risks']
+        dovish_words = ['growth', 'employment', 'slack', 'easing', 'accommodation', 'progress', 'softening', 'cut', 'achieved']
+    
+    hawkish_score = sum(text.count(word) for word in hawkish_words)
+    dovish_score = sum(text.count(word) for word in dovish_words)
+    
+    return hawkish_score, dovish_score
+
 # --- UI DA APLICAÇÃO ---
 st.title("🌍 Painel de Análise Macroeconômica")
 start_date = "2010-01-01"
@@ -74,40 +92,52 @@ tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unido
 # --- ABA BRASIL ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
-    subtab_br_activity, subtab_br_inflation = st.tabs(["Atividade e Emprego", "Inflação e Juros"])
+    subtab_br_activity, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade e Emprego", "Inflação e Juros", "Visão do Banco Central"])
     
     with subtab_br_activity:
         st.subheader("Atividade Econômica")
         plot_indicator(fetch_bcb_series(24369, start_date).pct_change(12).dropna() * 100, "IBC-Br (Prévia do PIB, Var. Anual %)", "Variação %")
-        plot_indicator(fetch_bcb_series(1473, start_date).pct_change(12).dropna() * 100, "Vendas no Varejo (Var. Anual %)", "Variação %")
-        
         st.subheader("Emprego")
         plot_indicator(fetch_bcb_series(24369, start_date), "Taxa de Desemprego (PNADC %)", "% da Força de Trabalho")
 
     with subtab_br_inflation:
         st.subheader("Inflação")
         plot_indicator(fetch_bcb_series(13522, start_date), "IPCA (Inflação ao Consumidor, Acum. 12M %)", "Variação %")
-        
         st.subheader("Taxa de Juros")
         plot_indicator(fetch_bcb_series(432, start_date), "Taxa Selic (Anualizada %)", "Taxa %")
+    
+    with subtab_br_bc:
+        st.subheader("Indicadores Monetários (BCB)")
+        plot_indicator(fetch_bcb_series(27841, start_date).pct_change(12).dropna()*100, "Agregado Monetário M2 (Var. Anual %)", "Variação %")
+        st.divider()
+        st.subheader("Análise do Discurso (Ata do Copom)")
+        copom_text = st.text_area("Cole aqui o texto da ata do Copom para análise:", height=200, key="copom_text")
+        if st.button("Analisar Discurso do Copom", key="copom_btn"):
+            if copom_text.strip():
+                h_score, d_score = analyze_central_bank_discourse(copom_text, lang='pt')
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Placar Hawkish 🦅", h_score)
+                col2.metric("Placar Dovish 🕊️", d_score)
+                balance = h_score - d_score
+                final_tone = "Hawkish" if balance > 0 else "Dovish" if balance < 0 else "Neutro"
+                col3.metric("Balanço Final", final_tone)
+            else:
+                st.warning("Por favor, insira um texto para ser analisado.")
 
 # --- ABA EUA ---
 with tab_us:
     st.header("Principais Indicadores dos Estados Unidos")
-    subtab_us_activity, subtab_us_inflation, subtab_us_yield = st.tabs(["Atividade e Emprego", "Inflação e Juros", "Curva de Juros"])
-
+    subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_bc = st.tabs(["Atividade e Emprego", "Inflação e Juros", "Curva de Juros", "Visão do Fed"])
+    
     with subtab_us_activity:
         st.subheader("Atividade Econômica")
         plot_indicator(fetch_fred_series("GDPC1", start_date).pct_change(4).dropna() * 100, "PIB Real (Var. Anual %)", "Variação %")
-        plot_indicator(fetch_fred_series("INDPRO", start_date).pct_change(12).dropna() * 100, "Produção Industrial (Var. Anual %)", "Variação %")
-
         st.subheader("Emprego")
         plot_indicator(fetch_fred_series("UNRATE", start_date), "Taxa de Desemprego (%)", "% da Força de Trabalho")
 
     with subtab_us_inflation:
         st.subheader("Inflação")
-        plot_indicator(fetch_fred_series("CPIAUCSL", start_date).pct_change(12).dropna() * 100, "CPI (Inflação ao Consumidor, Var. Anual %)", "Variação %")
-
+        plot_indicator(fetch_fred_series("CPIAUCSL", start_date).pct_change(12).dropna() * 100, "CPI (Var. Anual %)", "Variação %")
         st.subheader("Taxa de Juros")
         plot_indicator(fetch_fred_series("FEDFUNDS", start_date), "Federal Funds Rate (%)", "Taxa %")
     
@@ -119,43 +149,53 @@ with tab_us:
             yield_spread = (juro_10a - juro_2a).dropna()
             fig = px.area(yield_spread, title="Spread 10 Anos - 2 Anos (EUA)")
             fig.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Inversão (Sinal de Recessão)")
-            fig.update_layout(showlegend=False, yaxis_title="Diferença Percentual")
             st.plotly_chart(fig, use_container_width=True)
+    
+    with subtab_us_bc:
+        st.subheader("Indicadores Monetários (Fed)")
+        plot_indicator(fetch_fred_series("M2SL", start_date).pct_change(12).dropna()*100, "Agregado Monetário M2 (Var. Anual %)", "Variação %")
+        st.divider()
+        st.subheader("Análise do Discurso (Ata do FOMC)")
+        fomc_text = st.text_area("Cole aqui o texto da ata do FOMC para análise:", height=200, key="fomc_text")
+        if st.button("Analisar Discurso do FOMC", key="fomc_btn"):
+            if fomc_text.strip():
+                h_score, d_score = analyze_central_bank_discourse(fomc_text, lang='en')
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Placar Hawkish 🦅", h_score)
+                col2.metric("Placar Dovish 🕊️", d_score)
+                balance = h_score - d_score
+                final_tone = "Hawkish" if balance > 0 else "Dovish" if balance < 0 else "Neutro"
+                col3.metric("Balanço Final", final_tone)
+            else:
+                st.warning("Por favor, insira um texto para ser analisado.")
 
 # --- ABA MERCADOS GLOBAIS ---
 with tab_global:
     st.header("Índices e Indicadores de Mercado Global")
-    
     subtab_equity, subtab_commodities, subtab_risk, subtab_valuation = st.tabs(["Índices de Ações", "Commodities & Moedas", "Risco & Volatilidade", "Valuation"])
 
     with subtab_equity:
         st.subheader("Performance Comparada de Índices de Ações")
-        equity_tickers = {
-            "S&P 500 (EUA)": "^GSPC", "Ibovespa (Brasil)": "^BVSP", "Nasdaq (EUA Tech)": "^IXIC",
-            "DAX (Alemanha)": "^GDAXI", "Nikkei 225 (Japão)": "^N225", "FTSE 100 (Reino Unido)": "^FTSE"
-        }
-        selected_indices = st.multiselect("Selecione os índices para comparar:", options=list(equity_tickers.keys()), default=["S&P 500 (EUA)", "Ibovespa (Brasil)", "Nasdaq (EUA Tech)"])
-        
+        equity_tickers = {"S&P 500 (EUA)": "^GSPC", "Ibovespa (Brasil)": "^BVSP", "Nasdaq (EUA Tech)": "^IXIC", "DAX (Alemanha)": "^GDAXI", "Nikkei 225 (Japão)": "^N225"}
+        selected_indices = st.multiselect("Selecione os índices:", options=list(equity_tickers.keys()), default=["S&P 500 (EUA)", "Ibovespa (Brasil)"])
         if selected_indices:
             tickers_to_fetch = [equity_tickers[i] for i in selected_indices]
             market_data = fetch_market_data(tickers_to_fetch)
             if not market_data.empty:
                 normalized_data = (market_data / market_data.dropna().iloc[0]) * 100
-                fig = px.line(normalized_data, title="Performance Normalizada (Base 100)")
-                fig.update_layout(yaxis_title="Performance (Base 100)", xaxis_title="Data", legend_title="Índice")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(px.line(normalized_data, title="Performance Normalizada (Base 100)"), use_container_width=True)
 
     with subtab_commodities:
         st.subheader("Preços de Commodities e Taxas de Câmbio")
         col1, col2 = st.columns(2)
         with col1:
-            commodity_tickers = {"Petróleo WTI": "CL=F", "Ouro": "GC=F", "Cobre": "HG=F"}
+            commodity_tickers = {"Petróleo WTI": "CL=F", "Ouro": "GC=F"}
             commodity_data = fetch_market_data(list(commodity_tickers.values()))
             if not commodity_data.empty:
                 commodity_data.rename(columns=lambda c: next(k for k, v in commodity_tickers.items() if v == c), inplace=True)
                 st.plotly_chart(px.line(commodity_data, title="Evolução de Commodities"), use_container_width=True)
         with col2:
-            currency_tickers = {"Dólar vs Real": "BRL=X", "Euro vs Dólar": "EURUSD=X", "Dólar vs Iene": "JPY=X"}
+            currency_tickers = {"Dólar vs Real": "BRL=X", "Euro vs Dólar": "EURUSD=X"}
             currency_data = fetch_market_data(list(currency_tickers.values()))
             if not currency_data.empty:
                 currency_data.rename(columns=lambda c: next(k for k, v in currency_tickers.items() if v == c), inplace=True)
@@ -168,46 +208,13 @@ with tab_global:
             fig = px.area(vix_data, title="Índice de Volatilidade VIX ('Índice do Medo')")
             fig.add_hline(y=20, line_dash="dash", line_color="gray", annotation_text="Nível Normal")
             fig.add_hline(y=30, line_dash="dash", line_color="red", annotation_text="Nível Alto (Estresse)")
-            fig.update_layout(showlegend=False, yaxis_title="Pontos do Índice")
             st.plotly_chart(fig, use_container_width=True)
         
-        btc_data = fetch_market_data(["BTC-USD"])
-        if not btc_data.empty:
-            st.plotly_chart(px.line(btc_data, title="Preço do Bitcoin (USD) - Proxy de Apetite a Risco"), use_container_width=True)
-
-    # SUBSTITUA TODO O CONTEÚDO DENTRO DE 'with subtab_valuation:' POR ISTO
-
-    # SUBSTITUA TODO O CONTEÚDO DENTRO DE 'with subtab_valuation:' POR ISTO
-
-    # SUBSTITUA TODO O CONTEÚDO DENTRO DE 'with subtab_valuation:' POR ISTO
-
     with subtab_valuation:
         st.subheader("Análise de Fatores: Growth vs. Value (EUA)")
-        st.caption("Este gráfico compara a performance de ETFs de Crescimento (Growth) e Valor (Value). Uma linha ascendente indica que o mercado está favorecendo empresas de crescimento, enquanto uma linha descendente indica uma preferência por empresas de valor.")
-        
-        # Tickers de ETFs referência para Growth e Value
-        factor_tickers = {
-            "Growth": "VUG", # Vanguard Growth ETF
-            "Value": "VTV"   # Vanguard Value ETF
-        }
-        
-        # Busca os dados usando a função que já temos
+        factor_tickers = {"Growth": "VUG", "Value": "VTV"}
         factor_data = fetch_market_data(list(factor_tickers.values()))
-        
         if not factor_data.empty:
-            # Calcula o ratio da performance
             factor_data["Growth / Value Ratio"] = factor_data["VUG"] / factor_data["VTV"]
-            
-            # Plota o gráfico do ratio
             fig = px.line(factor_data["Growth / Value Ratio"], title="Ratio de Performance: Growth vs. Value")
-            fig.update_layout(yaxis_title="Ratio (Preço Growth / Preço Value)", xaxis_title="Data", showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
-            
-            # Gráfico de performance normalizada para visualização
-            with st.expander("Ver performance normalizada de cada fator"):
-                normalized_factors = (factor_data[["VUG", "VTV"]] / factor_data[["VUG", "VTV"]].dropna().iloc[0]) * 100
-                normalized_factors.rename(columns={"VUG": "Growth", "VTV": "Value"}, inplace=True)
-                fig_norm = px.line(normalized_factors, title="Performance Normalizada (Base 100)")
-                st.plotly_chart(fig_norm, use_container_width=True)
-        else:
-            st.warning("Não foi possível carregar os dados para a análise de fatores.")
