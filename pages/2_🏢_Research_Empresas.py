@@ -44,6 +44,37 @@ if 'peers_to_analyze' not in st.session_state:
 
 # --- FUNÇÕES AUXILIARES ---
 
+# ADICIONE ESTA NOVA FUNÇÃO JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
+
+@st.cache_data
+def get_all_financial_data(ticker_symbol):
+    """
+    Busca todos os dados financeiros de uma vez para um ticker e os armazena em cache.
+    """
+    try:
+        ticker_obj = yf.Ticker(ticker_symbol)
+        
+        # O '.info' é a chamada mais sensível, verificamos sua validade primeiro.
+        info = ticker_obj.info
+        if not info.get('longName'):
+            # Se não houver nome longo, o ticker é inválido ou não tem dados.
+            return {"error": f"Ticker '{ticker_symbol}' não encontrado ou sem dados."}
+
+        # Se o ticker for válido, busca o resto dos dados.
+        income_stmt = ticker_obj.income_stmt
+        balance_sheet = ticker_obj.balance_sheet
+        cash_flow = ticker_obj.cashflow
+        
+        # Retorna um dicionário com todos os dados
+        return {
+            "info": info,
+            "income_stmt": income_stmt,
+            "balance_sheet": balance_sheet,
+            "cash_flow": cash_flow
+        }
+    except Exception as e:
+        return {"error": f"Erro ao buscar dados para {ticker_symbol}: {e}"}
+
 def formatar_numero(n):
     if pd.isna(n): return "-"
     n = float(n)
