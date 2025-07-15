@@ -14,6 +14,7 @@ import os
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
 
+# --- NOME DO ARQUIVO DE DADOS ---
 DATA_FILE = "recommendations.csv"
 
 # --- Verifica se o usuário está logado ---
@@ -22,12 +23,10 @@ if not st.session_state.get("authentication_status"):
     st.stop()
 
 # --- CARREGAMENTO DOS DADOS PERSISTENTES ---
-# Carrega os dados do CSV para o session_state apenas uma vez por sessão
 if 'big_players_data' not in st.session_state:
-    try:
+    if os.path.exists(DATA_FILE):
         st.session_state.big_players_data = pd.read_csv(DATA_FILE)
-    except FileNotFoundError:
-        # Se o arquivo não existe, cria um DataFrame vazio
+    else:
         st.session_state.big_players_data = pd.DataFrame(columns=["País", "Gestora", "Classe de Ativo", "Recomendação", "Data"])
 
 # --- INICIALIZAÇÃO DAS APIS ---
@@ -105,7 +104,7 @@ with tab_br:
         plot_indicator(fetch_bcb_series(24369, start_date).pct_change(12).dropna() * 100, "IBC-Br (Var. Anual %)", "Variação %")
     
     with subtab_br_inflation:
-        st.subheader("Inflação")
+        st.subheader("Inflação e Juros")
         plot_indicator(fetch_bcb_series(13522, start_date), "IPCA (Acum. 12M %)")
     
     with subtab_br_bc:
@@ -122,31 +121,31 @@ with tab_br:
                 c3.metric("Balanço Final", bal)
     
     with subtab_br_big_players:
-            st.subheader("Consolidado de Recomendações para o Brasil")
-            if st.session_state.get("role") == "Analista":
-                with st.form("editor_form_br"):
-                    st.markdown("#### 📝 Modo Editor: Adicionar Nova Recomendação")
-                    c1,c2,c3 = st.columns(3)
-                    gestora = c1.selectbox("Gestora", ["BlackRock","JP Morgan","Itaú Asset","XP Asset","BTG Pactual"], key="br_gestora")
-                    classe_ativo = c2.selectbox("Classe de Ativo", ["Ações Brasil", "Renda Fixa Pré", "Inflação", "Dólar"], key="br_asset")
-                    recomendacao = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True, key="br_rec")
-                    if st.form_submit_button("Salvar Recomendação"):
-                        new_data = pd.DataFrame([{"País": "Brasil", "Gestora": gestora, "Classe de Ativo": classe_ativo, "Recomendação": recomendacao, "Data": datetime.now().strftime("%Y-%m-%d")}])
-                        updated_df = pd.concat([st.session_state.big_players_data, new_data], ignore_index=True)
-                        updated_df.to_csv(DATA_FILE, index=False)
-                        st.session_state.big_players_data = updated_df
-                        st.success("Recomendação salva!")
-                        st.rerun()
-            
-            df = st.session_state.big_players_data
-            if df.empty:
-                st.info("Nenhuma recomendação adicionada.")
-            else:
-                df_br = df[df['País'] == 'Brasil']
-                if not df_br.empty:
-                    df_br_latest = df_br.sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
-                    pivot = df_br_latest.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
-                    # (código para exibir o dataframe estilizado)
+        st.subheader("Consolidado de Recomendações para o Brasil")
+        if st.session_state.get("role") == "Analista":
+            with st.form("editor_form_br"):
+                st.markdown("#### 📝 Modo Editor: Adicionar Nova Recomendação")
+                c1,c2,c3 = st.columns(3)
+                gestora = c1.selectbox("Gestora", ["BlackRock","JP Morgan","Itaú Asset","XP Asset","BTG Pactual"], key="br_gestora")
+                classe_ativo = c2.selectbox("Classe de Ativo", ["Ações Brasil", "Renda Fixa Pré", "Inflação", "Dólar"], key="br_asset")
+                recomendacao = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True, key="br_rec")
+                if st.form_submit_button("Salvar Recomendação"):
+                    new_data = pd.DataFrame([{"País": "Brasil", "Gestora": gestora, "Classe de Ativo": classe_ativo, "Recomendação": recomendacao, "Data": datetime.now().strftime("%Y-%m-%d")}])
+                    updated_df = pd.concat([st.session_state.big_players_data, new_data], ignore_index=True)
+                    updated_df.to_csv(DATA_FILE, index=False)
+                    st.session_state.big_players_data = updated_df
+                    st.success("Recomendação salva!")
+                    st.rerun()
+
+        df_display = st.session_state.big_players_data
+        if df_display.empty:
+            st.info("Nenhuma recomendação adicionada.")
+        else:
+            df_br = df_display[df_display['País'] == 'Brasil']
+            if not df_br.empty:
+                df_br_latest = df_br.sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
+                pivot = df_br_latest.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
+                st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
 
 # --- ABA EUA ---
 with tab_us:
@@ -177,60 +176,19 @@ with tab_us:
                 c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅", h); c2.metric("Placar Dovish 🕊️",d)
                 bal = "Hawkish" if h>d else "Dovish" if d>h else "Neutro"
                 c3.metric("Balanço Final", bal)
-   # COLE ESTE CÓDIGO DENTRO DA ABA "with tab_us:"
-
     with subtab_us_big_players:
         st.subheader("Consolidado de Recomendações para os EUA")
-        
-        # --- MODO EDITOR (Visível apenas para Analistas) ---
         if st.session_state.get("role") == "Analista":
-            with st.form("editor_form_us"):
-                st.markdown("#### 📝 Modo Editor: Adicionar Nova Recomendação")
-                c1,c2,c3 = st.columns(3)
-                
-                # Widgets com chaves únicas para a aba EUA
-                gestora_us = c1.selectbox("Gestora", ["BlackRock", "JP Morgan", "Goldman Sachs", "Morgan Stanley", "Vanguard"], key="us_gestora")
-                classe_ativo_us = c2.selectbox("Classe de Ativo", ["Ações EUA (Large Cap)", "Ações EUA (Small Cap)", "Treasuries (10Y+)", "Crédito IG", "Crédito HY"], key="us_asset")
-                recomendacao_us = c3.radio("Recomendação", ["Overweight", "Neutral", "Underweight"], horizontal=True, key="us_rec")
-                
-                if st.form_submit_button("Salvar Recomendação"):
-                    new_data = pd.DataFrame([{
-                        "País": "EUA", 
-                        "Gestora": gestora_us, 
-                        "Classe de Ativo": classe_ativo_us, 
-                        "Recomendação": recomendacao_us, 
-                        "Data": datetime.now().strftime("%Y-%m-%d")
-                    }])
-                    
-                    # Lógica de persistência
-                    updated_df = pd.concat([st.session_state.big_players_data, new_data], ignore_index=True)
-                    updated_df.to_csv(DATA_FILE, index=False)
-                    st.session_state.big_players_data = updated_df
-                    
-                    st.success("Recomendação para os EUA salva!")
-                    st.rerun()
-
-        # --- VISUALIZAÇÃO PÚBLICA (Visível para todos) ---
-        df = st.session_state.big_players_data
-        if df.empty:
-            st.info("Nenhuma recomendação de gestora foi adicionada ainda.")
+            st.info("O formulário de edição para os EUA pode ser adicionado aqui, similar ao do Brasil.")
+        df_display_us = st.session_state.big_players_data
+        if df_display_us.empty:
+            st.info("Nenhuma recomendação adicionada.")
         else:
-            df_us = df[df['País'] == 'EUA']
-            
-            if df_us.empty:
-                st.info("Nenhuma recomendação para os EUA foi adicionada ainda.")
-            else:
+            df_us = df_display_us[df_display_us['País'] == 'EUA']
+            if not df_us.empty:
                 df_us_latest = df_us.sort_values('Data', ascending=False).drop_duplicates(['Gestora', 'Classe de Ativo'], keep='first')
-                
-                pivot_table = df_us_latest.pivot_table(
-                    index='Classe de Ativo', 
-                    columns='Gestora', 
-                    values='Recomendação',
-                    aggfunc='first'
-                ).fillna("-")
-                
-                # Função 'style_recommendation' deve estar definida no início do script
-                st.dataframe(pivot_table.style.applymap(style_recommendation), use_container_width=True)
+                pivot = df_us_latest.pivot_table(index='Classe de Ativo', columns='Gestora', values='Recomendação', aggfunc='first').fillna("-")
+                st.dataframe(pivot.style.applymap(style_recommendation), use_container_width=True)
 
 # --- ABA MERCADOS GLOBAIS ---
 with tab_global:
