@@ -1,4 +1,4 @@
-# Arquivo: Plataforma_PAG.py (Versão com Login Simplificado para Testes)
+# Arquivo: Plataforma_PAG.py (Versão com Login Autocontido para Testes)
 
 import streamlit as st
 import streamlit_authenticator as stauth
@@ -6,30 +6,34 @@ import streamlit_authenticator as stauth
 # --- Configuração da Página ---
 st.set_page_config(page_title="Plataforma PAG", page_icon="📈", layout="wide")
 
-# --- DADOS DE LOGIN (MÉTODO SIMPLIFICADO) ---
-# Em vez de um arquivo .yaml, definimos os usuários diretamente aqui.
-# As senhas já estão criptografadas (hashed) para sua segurança.
-# Usuário 1: jsilva, Senha 1: jsilva123
-# Usuário 2: aoliveira, Senha 2: aoliveira123
+# --- ETAPA 1: DEFINIR SENHAS EM TEXTO PLANO (APENAS PARA TESTE) ---
+# Aqui você pode definir as senhas que quiser de forma fácil.
+plain_passwords = ['jsilva123', 'aoliveira123']
+
+# --- ETAPA 2: CRIPTOGRAFAR AS SENHAS NA HORA ---
+# Esta linha gera as senhas criptografadas (hashed) necessárias para a biblioteca.
+hashed_passwords = stauth.Hasher(plain_passwords).generate()
+
+# --- ETAPA 3: MONTAR A CONFIGURAÇÃO DINAMICAMENTE ---
 config = {
     "credentials": {
         "usernames": {
             "jsilva": {
                 "email": "j.silva@suagestora.com",
                 "name": "João Silva (Advisor)",
-                "password": "$2b$12$5W.b.v3yG8xgXF6S/u5s9.g2o8B3Z4e9S6f7h8iJ0kL1m2n3o4p5q", 
+                "password": hashed_passwords[0] # Usa a primeira senha criptografada
             },
             "aoliveira": {
                 "email": "a.oliveira@suagestora.com",
                 "name": "Ana Oliveira (Analista)",
-                "password": "$2b$12$K1l2m3n4o5p6q7r8s9t0u.e9f8d7g6h5j4k3l2m1n2o3p4q",
+                "password": hashed_passwords[1] # Usa a segunda senha criptografada
             },
         }
     },
     "cookie": {
         "expiry_days": 30, 
-        "key": "uma_chave_secreta_muito_aleatoria", # Mude isso para qualquer string aleatória
-        "name": "pag_auth_cookie"
+        "key": "uma_chave_secreta_muito_aleatoria_e_diferente", # Mude isso para qualquer string
+        "name": "pag_auth_cookie_final"
     },
 }
 
