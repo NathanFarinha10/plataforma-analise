@@ -288,142 +288,88 @@ with tab_us:
         plot_indicator_with_analysis('fred', "UMCSENT", "Sentimento do Consumidor (Univ. Michigan)", "Mede a confiança dos consumidores. Um sentimento alto geralmente precede maiores gastos.", "Índice")
 
 
-    with subtab_us_jobs:
+     with subtab_us_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Americano")
-        st.caption("A força do mercado de trabalho é um dos principais mandatos do Federal Reserve e um motor para o consumo.")
         st.divider()
-
-        plot_indicator_with_analysis(
-            code="UNRATE", title="Taxa de Desemprego",
-            explanation="A porcentagem da força de trabalho que está desempregada, mas procurando por emprego. É o principal indicador da saúde do mercado de trabalho.",
-            unit="%"
-        )
+        plot_indicator_with_analysis('fred', "UNRATE", "Taxa de Desemprego", "A porcentagem da força de trabalho que está desempregada, mas procurando por emprego.", "%")
         st.divider()
-        plot_indicator_with_analysis(
-            code="PAYEMS", title="Criação de Vagas (Nonfarm Payrolls)",
-            explanation="Mede o número de novos empregos criados a cada mês, excluindo o setor agrícola. O dado mais importante para o mercado financeiro.",
-            unit="Milhares"
-        )
+        plot_indicator_with_analysis('fred', "PAYEMS", "Criação de Vagas (Nonfarm Payrolls)", "Mede o número de novos empregos criados a cada mês, excluindo o setor agrícola.", "Milhares")
         st.divider()
-        plot_indicator_with_analysis(
-            code="JTSJOL", title="Vagas em Aberto (JOLTS)",
-            explanation="Mede o total de vagas de emprego não preenchidas. Uma proporção alta de vagas por desempregado indica um mercado de trabalho muito aquecido.",
-            unit="Milhares"
-        )
+        plot_indicator_with_analysis('fred', "JTSJOL", "Vagas em Aberto (JOLTS)", "Mede o total de vagas de emprego não preenchidas. Uma proporção alta de vagas por desempregado indica um mercado aquecido.", "Milhares")
         st.divider()
-        plot_indicator_with_analysis(
-            code="CES0500000003", title="Crescimento dos Salários (Average Hourly Earnings)",
-            explanation="Mede a variação anual do salário médio por hora. É um indicador crucial para a inflação, pois salários mais altos podem levar a um aumento no consumo e nos preços.",
-            unit="Var. Anual %", is_pct_change=True
-        )
+        plot_indicator_with_analysis('fred', "CES0500000003", "Crescimento dos Salários (Average Hourly Earnings)", "Mede a variação anual do salário médio por hora. É um indicador crucial para a inflação.", "Var. Anual %", is_pct_change=True)
     
     with subtab_us_inflation:
         st.subheader("Indicadores de Inflação e Preços")
         st.caption("A dinâmica da inflação é o principal fator que guia as decisões de juros do Federal Reserve.")
         
-        # --- CPI ---
         st.markdown("#### Consumer Price Index (CPI) - Inflação ao Consumidor")
         col_cpi1, col_cpi2 = st.columns(2)
         with col_cpi1:
-            plot_indicator_with_analysis("CPIAUCSL", "CPI Cheio", "Mede a variação de preços de uma cesta ampla de bens e serviços, incluindo alimentos e energia. É a principal medida de inflação para o público.")
+            plot_indicator_with_analysis('fred', "CPIAUCSL", "CPI Cheio", "Mede a variação de preços de uma cesta ampla de bens e serviços, incluindo alimentos e energia.", is_pct_change=True, unit="Var. Anual %")
         with col_cpi2:
-            plot_indicator_with_analysis("CPILFESL", "Core CPI (Núcleo)", "Exclui os componentes voláteis de alimentos e energia para medir a tendência de fundo da inflação. É muito observado pelo Fed.")
+            plot_indicator_with_analysis('fred', "CPILFESL", "Core CPI (Núcleo)", "Exclui os componentes voláteis de alimentos e energia para medir a tendência de fundo da inflação.", is_pct_change=True, unit="Var. Anual %")
         
-        col_cpi3, col_cpi4 = st.columns(2)
-        with col_cpi3:
-            plot_indicator_with_analysis("CUSR0000SAD", "CPI - Bens Duráveis", "Mede a inflação específica de bens de consumo duráveis, como carros e eletrodomésticos.")
-        with col_cpi4:
-            plot_indicator_with_analysis("CUSR0000SAS", "CPI - Serviços", "Mede a inflação no setor de serviços, que é mais sensível aos salários e geralmente mais 'pegajosa'.")
-
         st.divider()
 
-        # --- PCE ---
-        # --- PCE CORRIGIDO ---
         st.markdown("#### Personal Consumption Expenditures (PCE) - A Métrica do Fed")
         col_pce1, col_pce2 = st.columns(2)
         with col_pce1:
-            plot_indicator_with_analysis("PCEPI", "PCE Cheio", "A medida de inflação preferida pelo Fed.", is_pct_change=True, unit="Var. Anual %")
+            plot_indicator_with_analysis('fred', "PCEPI", "PCE Cheio", "A medida de inflação preferida pelo Fed. Sua cesta é mais ampla e dinâmica que a do CPI.", is_pct_change=True, unit="Var. Anual %")
         with col_pce2:
-            plot_indicator_with_analysis("PCEPILFE", "Core PCE (Núcleo)", "O indicador mais importante para a política monetária. A meta do Fed é de 2% para este núcleo.", is_pct_change=True, unit="Var. Anual %")
-        
+            plot_indicator_with_analysis('fred', "PCEPILFE", "Core PCE (Núcleo)", "O indicador mais importante para a política monetária. A meta do Fed é de 2% para este núcleo.", is_pct_change=True, unit="Var. Anual %")
+
         st.divider()
 
-        # --- PPI & Expectativas ---
         st.markdown("#### Producer Price Index (PPI) & Expectativas")
         col_ppi1, col_ppi2 = st.columns(2)
         with col_ppi1:
-            plot_indicator_with_analysis("PPIACO", "PPI Cheio", "Mede a inflação na porta da fábrica (preços no atacado). É um indicador antecedente para a inflação ao consumidor (CPI).")
+            plot_indicator_with_analysis('fred', "PPIACO", "PPI Cheio (Final Demand)", "Mede a inflação na porta da fábrica (preços no atacado). É um indicador antecedente para a inflação ao consumidor (CPI).", is_pct_change=True, unit="Var. Anual %")
         with col_ppi2:
-            plot_indicator_with_analysis("PPIFES", "Core PPI (Núcleo)", "Exclui alimentos e energia do PPI para mostrar a tendência de fundo dos preços ao produtor.")
-        
-        # Para o MICH, não calculamos variação percentual, apenas mostramos o índice
-        st.divider()
-        mich_data = fetch_fred_series("MICH", start_date)
-        fig_mich = px.line(mich_data, title="Expectativa de Inflação (Univ. Michigan - 1 Ano)")
-        fig_mich.update_layout(showlegend=False, yaxis_title="Inflação Esperada (%)")
-        st.plotly_chart(fig_mich, use_container_width=True)
-        st.caption("Mede a inflação que os consumidores esperam para os próximos 12 meses. Importante para o Fed, pois as expectativas podem influenciar a inflação futura.")
+            plot_indicator_with_analysis('fred', "MICH", "Expectativa de Inflação (Michigan, 1 Ano)", "Mede a inflação que os consumidores esperam para os próximos 12 meses. Importante para o Fed, pois as expectativas podem influenciar a inflação futura.", unit="%")
 
     
-    with subtab_us_yield:
+   with subtab_us_yield:
         st.subheader("Análise da Curva de Juros Americana")
         st.caption("A forma e os spreads da curva de juros são um dos principais indicadores antecedentes da atividade econômica.")
         st.divider()
 
-        # 1. Gráfico da Curva de Juros Completa
         st.markdown("##### Forma da Curva de Juros Atual")
+        @st.cache_data(ttl=3600)
+        def get_us_yield_curve_data():
+            codes = {'1 Mês':'DGS1MO','3 Meses':'DTB3','6 Meses':'DTB6','1 Ano':'DGS1','2 Anos':'DGS2','5 Anos':'DGS5','10 Anos':'DGS10','30 Anos':'DGS30'}
+            data = []
+            for name, code in codes.items():
+                try:
+                    val = fetch_fred_series(code, datetime.now() - pd.Timedelta(days=10)) # Busca dados recentes
+                    if not val.empty: data.append({'Prazo': name, 'Taxa (%)': val.iloc[-1]})
+                except: continue
+            df = pd.DataFrame(data)
+            if not df.empty: df['Prazo'] = pd.Categorical(df['Prazo'], categories=codes.keys(), ordered=True); return df.sort_values('Prazo')
+            return df
+        
         yield_curve_df = get_us_yield_curve_data()
         if not yield_curve_df.empty:
-            latest_date = fred.get_series_info('DGS10').loc['last_updated'].split(' ')[0]
-            fig_curve = px.line(yield_curve_df, x='Prazo', y='Taxa (%)', title=f"Curva de Juros do Tesouro Americano ({latest_date})", markers=True)
-            fig_curve.update_layout(xaxis_title="Vencimento do Título", yaxis_title="Taxa de Juros Anual (%)")
+            fig_curve = px.line(yield_curve_df, x='Prazo', y='Taxa (%)', title="Curva de Juros do Tesouro Americano", markers=True)
             st.plotly_chart(fig_curve, use_container_width=True)
         else:
             st.warning("Não foi possível carregar os dados para a forma da curva de juros.")
         
         st.divider()
-
-        # 2. Spreads da Curva
         st.markdown("##### Spreads da Curva de Juros (Indicadores de Recessão)")
         col1, col2 = st.columns(2)
         with col1:
-            juro_10a = fetch_fred_series("DGS10", start_date)
-            juro_2a = fetch_fred_series("DGS2", start_date)
-            if not juro_10a.empty and not juro_2a.empty:
-                spread_10y2y = (juro_10a - juro_2a).dropna()
-                fig = px.area(spread_10y2y, title="Spread 10 Anos - 2 Anos")
-                fig.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Inversão")
-                st.plotly_chart(fig, use_container_width=True)
-                st.caption("A inversão deste spread (quando fica abaixo de zero) historicamente antecede recessões econômicas.")
-
+            j10a = fetch_fred_series("DGS10", start_date); j2a = fetch_fred_series("DGS2", start_date)
+            if not j10a.empty and not j2a.empty:
+                spread = (j10a - j2a).dropna()
+                fig = px.area(spread, title="Spread 10 Anos - 2 Anos"); fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
+                st.caption("A inversão deste spread (abaixo de zero) historicamente antecede recessões.")
         with col2:
-            juro_2a_s = fetch_fred_series("DGS2", start_date)
-            juro_3m = fetch_fred_series("DGS3MO", start_date)
-            if not juro_2a_s.empty and not juro_3m.empty:
-                spread_2y3m = (juro_2a_s - juro_3m).dropna()
-                fig = px.area(spread_2y3m, title="Spread 2 Anos - 3 Meses")
-                fig.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Inversão")
-                st.plotly_chart(fig, use_container_width=True)
-                st.caption("Considerado pelo Fed como um indicador de recessão de curto prazo muito confiável.")
-
-        st.divider()
-        
-        # 3. Taxas Chave de Referência
-        st.markdown("##### Taxas de Juros Chave")
-        col3, col4 = st.columns(2)
-        with col3:
-            plot_indicator_with_analysis(
-                code="FEDFUNDS", title="Fed Funds Rate (FFR)",
-                explanation="A principal taxa de juros de política monetária, definida pelo Federal Reserve. É a base para todas as outras taxas da economia.",
-                unit="%"
-            )
-        with col4:
-            plot_indicator_with_analysis(
-                code="DFII10", title="Juro Real de 10 Anos (10y TIPS)",
-                explanation="O rendimento de um título do tesouro de 10 anos que já é protegido contra a inflação. Representa a taxa de juro 'real' livre de risco.",
-                unit="%"
-            )
-
+            j2a_s = fetch_fred_series("DGS2", start_date); j3m = fetch_fred_series("DGS3MO", start_date)
+            if not j2a_s.empty and not j3m.empty:
+                spread = (j2a_s - j3m).dropna()
+                fig = px.area(spread, title="Spread 2 Anos - 3 Meses"); fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
+                st.caption("Considerado pelo Fed um indicador de recessão de curto prazo muito confiável.")
 
     
     with subtab_us_real_estate:
@@ -431,73 +377,57 @@ with tab_us:
         st.caption("O setor imobiliário é um dos principais motores do ciclo econômico dos EUA.")
         st.divider()
 
-        plot_indicator_with_analysis(
-            code="MORTGAGE30US",
-            title="Taxa de Financiamento Imobiliário 30 Anos",
-            explanation="Mede o custo do crédito para compra de imóveis. Taxas mais altas desestimulam a demanda, enquanto taxas mais baixas a incentivam.",
+        plot_indicator_with_analysis('fred', 
+            "MORTGAGE30US", "Taxa de Financiamento Imobiliário 30 Anos",
+            "Mede o custo do crédito para compra de imóveis. Taxas mais altas desestimulam a demanda.",
             unit="%"
         )
         st.divider()
-        plot_indicator_with_analysis(
-            code="CSUSHPISA",
-            title="S&P/Case-Shiller U.S. National Home Price Index",
-            explanation="Principal índice de preços de imóveis residenciais. Mostra a valorização (ou desvalorização) das casas. É um indicador de inflação de ativos.",
+        plot_indicator_with_analysis('fred', 
+            "CSUSHPISA", "Índice de Preços de Imóveis (Case-Shiller)",
+            "Principal índice de preços de imóveis residenciais. Mostra a valorização das casas.",
             unit="Índice"
         )
         st.divider()
-        plot_indicator_with_analysis(
-            code="PERMIT",
-            title="Permissões de Construção",
-            explanation="É um indicador antecedente da atividade de construção. Um aumento nas permissões sinaliza um aquecimento do setor no futuro próximo.",
+        plot_indicator_with_analysis('fred', 
+            "PERMIT", "Permissões de Construção",
+            "Indicador antecedente da atividade de construção. Um aumento nas permissões sinaliza aquecimento do setor.",
             unit="Milhares"
         )
         st.divider()
-        plot_indicator_with_analysis(
-            code="HOUST",
-            title="Novas Casas Iniciadas",
-            explanation="Mede o número de novas residências que começaram a ser construídas. É um indicador direto da atividade atual do setor de construção.",
-            unit="Milhares"
-        )
-        st.divider()
-        plot_indicator_with_analysis(
-            code="HSN1F",
-            title="Casas Novas Vendidas",
-            explanation="Mede a força da demanda por novas propriedades. Um aumento nas vendas indica um mercado aquecido e confiança do consumidor.",
-            unit="Milhares"
-        )
-        st.divider()
-        plot_indicator_with_analysis(
-            code="EXHOSLUSM495S",
-            title="Casas Existentes à Venda (Estoque)",
-            explanation="Mede o estoque de casas usadas disponíveis para venda. Um estoque baixo pressiona os preços para cima; um estoque alto indica um mercado mais fraco.",
+        plot_indicator_with_analysis('fred', 
+            "HSN1F", "Casas Novas Vendidas",
+            "Mede a força da demanda por novas propriedades. Um aumento nas vendas indica um mercado aquecido.",
             unit="Milhares"
         )
 
     with subtab_us_fed:
         st.subheader("Painel de Política Monetária - Federal Reserve (Fed)")
-        st.caption("Acompanhe os indicadores, o balanço e a comunicação do banco central americano.")
-        
-        # --- SEÇÃO 1: INDICADORES QUANTITATIVOS ---
-        st.markdown("##### Indicadores Chave da Política Monetária")
-        
+        st.caption("Acompanhe as ferramentas e os indicadores que guiam as decisões do banco central americano.")
+        st.divider()
+
+        st.markdown("##### Política de Juros e Balanço do Fed")
         col1, col2 = st.columns(2)
         with col1:
-            plot_indicator_with_analysis("FEDFUNDS", "Fed Funds Rate", "A principal taxa de juros de política monetária, definida pelo FOMC.", unit="%")
-            plot_indicator_with_analysis("WALCL", "Ativos Totais no Balanço do Fed", "Mede o tamanho do balanço do Fed. Aumentos (QE) indicam política expansionista; reduções (QT) indicam política contracionista.", unit="$ Trilhões")
+            plot_indicator_with_analysis('fred', "FEDFUNDS", "Fed Funds Rate", "A principal taxa de juros de política monetária, definida pelo FOMC.", unit="%")
         with col2:
-            plot_indicator_with_analysis("M2SL", "Agregado Monetário M2 (Var. % Anual)", "Mede a quantidade total de 'dinheiro' na economia. Sua variação pode ser um indicador antecedente de inflação.", unit="%", is_pct_change=True)
+            plot_indicator_with_analysis('fred', "WALCL", "Ativos Totais no Balanço do Fed", "Aumentos (QE) indicam política expansionista; reduções (QT) indicam política contracionista.", unit="$ Trilhões")
+
+        st.divider()
+        st.markdown("##### Agregados Monetários e Contexto Fiscal")
+        col3, col4 = st.columns(2)
+        with col3:
+            plot_indicator_with_analysis('fred', "M2SL", "Agregado Monetário M2", "Mede a quantidade de 'dinheiro' na economia. Sua variação pode ser um indicador antecedente de inflação.", "Var. Anual %", is_pct_change=True)
+        with col4:
             debt = fetch_fred_series("GFDEBTN", start_date); gdp = fetch_fred_series("GDP", start_date)
             if not debt.empty and not gdp.empty:
                 gdp = gdp.resample('D').ffill()
                 debt_to_gdp = (debt / (gdp * 1_000_000_000)).dropna() * 100
-                fig_debt = px.area(debt_to_gdp, title="Dívida Pública / PIB (%)")
-                fig_debt.update_layout(showlegend=False, yaxis_title="%"); st.plotly_chart(fig_debt, use_container_width=True)
-                st.caption("Mede a alavancagem do governo. Níveis elevados podem pressionar os juros de longo prazo.")
+                fig_debt = px.area(debt_to_gdp, title="Dívida Pública / PIB (%)"); fig_debt.update_layout(showlegend=False, yaxis_title="%"); st.plotly_chart(fig_debt, use_container_width=True)
 
         st.divider()
-
-        # --- SEÇÃO 2: ACOMPANHAMENTO HISTÓRICO DO FOMC ---
         st.subheader("Acompanhamento Histórico do Discurso do FOMC")
+        # (O código do histórico do FOMC permanece o mesmo aqui)
         
         meetings = st.session_state.fomc_meetings
         if not meetings:
