@@ -1,4 +1,4 @@
-# 1_📈_Análise_Macro.py (Versão 4.1.1 - Final com Correção de Indentação)
+# 1_📈_Análise_Macro.py (Versão 8.0 - Final e Corrigida)
 
 import streamlit as st
 import pandas as pd
@@ -15,66 +15,32 @@ import json
 # --- Configuração da Página ---
 st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
 
-st.sidebar.image("logo.png", use_container_width=True)
-
-# --- NOME DO ARQUIVO DE DADOS ---
-DATA_FILE = "recommendations.csv"
+# --- NOME DOS ARQUIVOS DE DADOS ---
 RECOMMENDATIONS_FILE = "recommendations.csv"
 MANAGER_VIEWS_FILE = "manager_views.json"
-REPORTS_DIR = "reports"
-FOMC_MEETINGS_FILE = "fomc_meetings.json"
-REPORTS_DIR = "reports_fomc" # Diretório para atas do FOMC
+REPORTS_DIR_FOMC = "reports_fomc"
 
 # --- Verifica se o usuário está logado ---
 if not st.session_state.get("authentication_status"):
-    st.info("Por favor, faça o login para acessar esta página.")
-    st.stop()
+    st.info("Por favor, faça o login para acessar esta página."); st.stop()
 
-# --- CARREGAMENTO DOS DADOS PERSISTENTES ---
-if 'big_players_data' not in st.session_state:
-    if os.path.exists(DATA_FILE):
-        st.session_state.big_players_data = pd.read_csv(DATA_FILE)
-    else:
-        st.session_state.big_players_data = pd.DataFrame(columns=["País", "Gestora", "Classe de Ativo", "Recomendação", "Data"])
-
+# --- CARREGAMENTO INICIAL DOS DADOS ---
 def load_data():
-    if os.path.exists(RECOMMENDATIONS_FILE):
-        recs = pd.read_csv(RECOMMENDATIONS_FILE)
-    else:
-        recs = pd.DataFrame(columns=["Gestora", "Classe de Ativo", "Recomendação", "Data"])
-    
-    if os.path.exists(MANAGER_VIEWS_FILE):
-        with open(MANAGER_VIEWS_FILE, 'r', encoding='utf-8') as f:
-            views = json.load(f)
-    else:
-        views = {} # Estrutura padrão será criada se o arquivo não existir
-    
-    return recs, views
-
-recommendations_df, manager_views = load_data()
-
-# --- FUNÇÕES DE CARREGAMENTO E SALVAMENTO DE DADOS ---
-def load_json_data(file_path):
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return [] # Retorna lista vazia se o arquivo não existir
-
-def save_json_data(data, file_path):
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-# --- CARREGAMENTO INICIAL DOS DADOS DO FOMC ---
-if 'fomc_meetings' not in st.session_state:
-    st.session_state.fomc_meetings = load_json_data(FOMC_MEETINGS_FILE)
+    if 'recs_df' not in st.session_state:
+        try: st.session_state.recs_df = pd.read_csv(RECOMMENDATIONS_FILE)
+        except FileNotFoundError: st.session_state.recs_df = pd.DataFrame()
+    if 'fomc_meetings' not in st.session_state:
+        try:
+            with open(FOMC_MEETINGS_FILE, 'r', encoding='utf-8') as f: st.session_state.fomc_meetings = json.load(f)
+        except FileNotFoundError: st.session_state.fomc_meetings = []
+load_data()
 
 # --- INICIALIZAÇÃO DAS APIS ---
 @st.cache_resource
 def get_fred_api():
     try:
         api_key = st.secrets.get("FRED_API_KEY")
-        if not api_key:
-            st.error("Chave da API do FRED não configurada."); st.stop()
+        if not api_key: st.error("Chave da API do FRED não configurada."); st.stop()
         return Fred(api_key=api_key)
     except Exception as e:
         st.error(f"Falha ao inicializar API do FRED: {e}"); st.stop()
@@ -82,60 +48,27 @@ fred = get_fred_api()
 
 # --- FUNÇÕES AUXILIARES ---
 @st.cache_data(ttl=3600)
-# SUBSTITUA A SUA FUNÇÃO fetch_fred_series POR ESTA VERSÃO DE DIAGNÓSTICO
-
-@st.cache_data(ttl=3600)
 def fetch_fred_series(code, start_date):
-    """Busca uma única série do FRED de forma robusta."""
     try: return fred.get_series(code, start_date)
     except: return pd.Series(dtype='float64')
-        
+
 @st.cache_data(ttl=3600)
 def fetch_bcb_series(codes, start_date):
-    """
-    Busca um ou mais códigos do BCB SGS.
-    'codes' deve ser um dicionário como {'Nome da Série': 1234}
-    """
     try:
         df = sgs.get(codes, start=start_date)
-        if isinstance(df, pd.DataFrame) and not df.empty:
-            return df
-        else:
-            return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
+        if isinstance(df, pd.DataFrame) and not df.empty: return df
+        else: return pd.DataFrame()
+    except Exception: return pd.DataFrame()
 
 @st.cache_data(ttl=86400)
 def fetch_market_data(tickers, period="5y"):
     try: return yf.download(tickers, period=period, progress=False)['Close']
     except: return pd.DataFrame()
 
-def plot_indicator(data, title, y_label="Valor"):
-    if data is None or data.empty:
-        st.warning(f"Não foi possível carregar os dados para {title}.")
-        return
-    fig = px.area(data, title=title, labels={"value": y_label, "index": "Data"})
-    fig.update_layout(showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
-
-# SUBSTITUA A FUNÇÃO ANTIGA POR ESTA VERSÃO CORRETA
-
-def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice", start_date="2005-01-01", is_pct_change=False, hline=None):
-    """
-    Função genérica que busca dados do FRED ou BCB e plota com análise.
-    """
-    if source == 'fred':
-        data = fetch_fred_series(code, start_date).dropna()
-    elif source == 'bcb':
-        data = fetch_bcb_series(code, start_date).dropna()
-    else:
-        st.error("Fonte de dados desconhecida."); return
-
-    if data.empty: st.warning(f"Não foi possível carregar os dados para {title}."); return
+def plot_indicator_with_analysis(data, title, explanation, unit="Índice", hline=None):
+    if data is None or data.empty: st.warning(f"Não foi possível carregar os dados para {title}."); return
     
-    data_to_plot = data.pct_change(12).dropna() * 100 if is_pct_change else data
-    if data_to_plot.empty: st.warning(f"Dados insuficientes para calcular a variação de {title}."); return
-
+    data_to_plot = data.copy()
     latest_value = data_to_plot.iloc[-1]
     prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
     prev_year_value = data_to_plot.iloc[-13] if len(data_to_plot) > 12 else None
@@ -149,7 +82,7 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
     with col2:
         st.markdown(f"**Análise do Indicador**"); st.caption(explanation)
         st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
-        is_rate = (unit == "%") or (is_pct_change)
+        is_rate = (unit == "%")
         if prev_month_value is not None:
             change_mom = ((latest_value / prev_month_value) - 1) * 100 if not is_rate and prev_month_value != 0 else latest_value - prev_month_value
             unit_label = "%" if not is_rate else " p.p."
@@ -161,223 +94,92 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
 
 @st.cache_data(ttl=3600)
 def get_brazilian_yield_curve():
-    """Busca a Estrutura a Termo da Taxa de Juros (ETTJ) para títulos prefixados."""
     codes = {"1 Ano": 12469, "2 Anos": 12470, "3 Anos": 12471, "5 Anos": 12473, "10 Anos": 12478}
-    data = []
+    yield_data = []
     for name, code in codes.items():
         try:
-            val = sgs.get({name: code}, last=1)
-            if not val.empty: data.append({'Prazo': name, 'Taxa (%)': val.iloc[0, 0]})
+            val = fetch_bcb_series({name: code}, start_date=datetime.now() - pd.Timedelta(days=10))
+            if not val.empty: yield_data.append({'Prazo': name, 'Taxa (%)': val.iloc[-1, 0]})
         except: continue
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(yield_data)
     if not df.empty:
         df['Prazo'] = pd.Categorical(df['Prazo'], categories=codes.keys(), ordered=True)
         return df.sort_values('Prazo')
     return df
 
-@st.cache_data(ttl=3600)
-def get_brazilian_real_interest_rate(start_date):
-    """Busca dados da Selic e IPCA para calcular o juro real ex-post."""
-    try:
-        selic = sgs.get({'selic': 432}, start=start_date) / 100
-        ipca = sgs.get({'ipca': 13522}, start=start_date) / 100
-        df = selic.resample('M').mean().join(ipca.resample('M').last()).dropna()
-        df['Juro Real (aa)'] = (((1 + df['selic']) / (1 + df['ipca'])) - 1) * 100
-        return df[['Juro Real (aa)']]
-    except Exception: return pd.DataFrame()
-
-# SUBSTITUA A SUA FUNÇÃO get_us_yield_curve_data PELA VERSÃO CORRIGIDA ABAIXO
-
-@st.cache_data(ttl=3600)
-def get_us_yield_curve_data():
-    """Busca os dados mais recentes para montar a curva de juros dos EUA."""
-    maturities_codes = {
-        '1 Mês': 'DGS1MO', 
-        '3 Meses': 'DTB3',       # <-- CÓDIGO CORRIGIDO
-        '6 Meses': 'DTB6',       # <-- CÓDIGO CORRIGIDO
-        '1 Ano': 'DGS1', 
-        '2 Anos': 'DGS2', 
-        '3 Anos': 'DGS3', 
-        '5 Anos': 'DGS5', 
-        '7 Anos': 'DGS7', 
-        '10 Anos': 'DGS10', 
-        '20 Anos': 'DGS20', 
-        '30 Anos': 'DGS30'
-    }
-    yield_data = []
-    for name, code in maturities_codes.items():
-        try:
-            # Pega o último valor disponível para cada maturidade
-            latest_value = fred.get_series_latest_release(code)
-            if not latest_value.empty:
-                yield_data.append({'Prazo': name, 'Taxa (%)': latest_value.iloc[0]})
-        except:
-            continue
-    
-    # Ordena os prazos para o gráfico ficar correto
-    maturities_order = list(maturities_codes.keys())
-    df = pd.DataFrame(yield_data)
-    if not df.empty:
-        df['Prazo'] = pd.Categorical(df['Prazo'], categories=maturities_order, ordered=True)
-        return df.sort_values('Prazo')
-    return df
-
-def analyze_central_bank_discourse(text, lang='pt'):
-    text = text.lower(); text = re.sub(r'\d+', '', text)
-    if lang == 'pt':
-        hawkish_words = ['inflação','risco','preocupação','desancoragem','expectativas','cautela','perseverança','serenidade','aperto','restritiva','incerteza','desafios']
-        dovish_words = ['crescimento','atividade','hiato','ociosidade','arrefecimento','desaceleração','flexibilização','estímulo','progresso']
-    else:
-        hawkish_words = ['inflation','risk','tightening','restrictive','concern','hike','vigilance','uncertainty','upside risks']
-        dovish_words = ['growth','employment','slack','easing','accommodation','progress','softening','cut','achieved']
-    hawkish_score = sum(text.count(word) for word in hawkish_words)
-    dovish_score = sum(text.count(word) for word in dovish_words)
-    return hawkish_score, dovish_score
-
-def style_recommendation(val):
-    colors = {'Overweight': 'rgba(40, 167, 69, 0.7)', 'Underweight': 'rgba(220, 53, 69, 0.7)', 'Neutral': 'rgba(255, 193, 7, 0.7)'}
-    return f'background-color: {colors.get(val, "transparent")}; color: white; text-align: center; font-weight: bold;'
-
 # --- UI DA APLICAÇÃO ---
 st.title("🌍 Painel de Análise Macroeconômica")
-start_date = "2010-01-01"
-
-# --- ABA PRINCIPAL ---
+start_date = "2012-01-01"
 tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unidos", "🌐 Mercados Globais"])
 
 # --- ABA BRASIL ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
-    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_yield, subtab_br_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Curva de Juros", "Visão do BCB"])
+    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_yield, subtab_br_bc = st.tabs(["Atividade", "Emprego", "Inflação", "Curva de Juros", "Visão do BCB"])
     
     with subtab_br_activity:
         st.subheader("Indicadores de Atividade Econômica e Confiança")
         st.divider()
-        plot_indicator_with_analysis('bcb', 24369, "IBC-Br (Prévia do PIB)", "Índice de Atividade Econômica do Banco Central, considerado uma 'prévia' mensal do PIB.", "Índice", start_date=start_date)
+        data = fetch_bcb_series({'data': 24369}, start_date); plot_indicator_with_analysis(data, "IBC-Br (Prévia do PIB)", "Índice de Atividade Econômica do BCB.", "Índice")
         st.divider()
-        plot_indicator_with_analysis('bcb', 21859, "Produção Industrial (PIM-PF)", "Mede a produção física da indústria. Um termômetro da saúde do setor secundário.", "Var. Anual %", is_pct_change=True, start_date=start_date)
+        data = fetch_bcb_series({'data': 21859}, start_date).pct_change(12).dropna()*100; plot_indicator_with_analysis(data, "Produção Industrial", "Mede a produção física da indústria.", "Var. Anual %")
         st.divider()
-        plot_indicator_with_analysis('bcb', 1473, "Vendas no Varejo (PMC - Volume)", "Mede o volume de vendas do comércio varejista. Principal indicador para medir a força do consumo.", "Var. Anual %", is_pct_change=True, start_date=start_date)
+        data = fetch_bcb_series({'data': 1473}, start_date).pct_change(12).dropna()*100; plot_indicator_with_analysis(data, "Vendas no Varejo", "Mede o volume de vendas do comércio.", "Var. Anual %")
         st.divider()
-        plot_indicator_with_analysis('bcb', 24424, "Volume de Serviços (PMS)", "Mede a receita bruta real do setor de serviços, o maior componente do PIB.", "Var. Anual %", is_pct_change=True, start_date=start_date)
+        data = fetch_bcb_series({'data': 24424}, start_date).pct_change(12).dropna()*100; plot_indicator_with_analysis(data, "Volume de Serviços", "Mede a receita real do setor de serviços.", "Var. Anual %")
         st.divider()
-        plot_indicator_with_analysis('bcb', 4393.3, "Índice de Confiança do Consumidor (ICC - FGV)", "Mede o otimismo dos consumidores. É um indicador antecedente do consumo futuro.", "Índice", start_date=start_date)
+        data = fetch_bcb_series({'data': 4393}, start_date); plot_indicator_with_analysis(data, "Índice de Confiança do Consumidor", "Mede o otimismo dos consumidores.", "Índice")
 
-    # --- NOVA SUB-ABA: MERCADO DE TRABALHO BRASILEIRO ---
     with subtab_br_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Brasileiro")
-        st.caption("A dinâmica de emprego e renda é crucial para a análise de consumo e da política monetária.")
         st.divider()
+        data = fetch_bcb_series({'data': 24369}, start_date); plot_indicator_with_analysis(data, "Taxa de Desemprego (PNADC)", "Porcentagem da força de trabalho desocupada.", "%")
+        st.divider()
+        data = fetch_bcb_series({'data': 28795}, start_date); plot_indicator_with_analysis(data, "Renda Média Real (Trabalhador com Carteira)", "Variação anual do rendimento médio real do trabalhador com carteira assinada.", "Var. Anual %")
+        st.divider()
+        data = fetch_bcb_series({'data': 28793}, start_date); plot_indicator_with_analysis(data, "Renda Média Real (Total Setor Privado)", "Variação anual do rendimento médio real de todos os trabalhadores do setor privado.", "Var. Anual %")
 
-        plot_indicator_with_analysis(
-            source='bcb', code=24369, title="Taxa de Desemprego (PNADC)",
-            explanation="Mede a porcentagem da força de trabalho que está desocupada. É o principal termômetro da saúde do mercado de trabalho no Brasil.",
-            unit="%"
-        )
-        st.divider()
-        plot_indicator_with_analysis(
-            source='bcb', code=28795, title="Renda Média Real (Trabalhador com Carteira)",
-            explanation="Mede a variação anual do rendimento médio real (descontada a inflação) do trabalhador com carteira assinada no setor privado.",
-            unit="Var. Anual %"
-        )
-        st.divider()
-        plot_indicator_with_analysis(
-            source='bcb', code=28793, title="Renda Média Real (Total Setor Privado)",
-            explanation="Mede a variação anual do rendimento médio real de todos os trabalhadores do setor privado, incluindo informais.",
-            unit="Var. Anual %"
-        )
-    
     with subtab_br_inflation:
         st.subheader("Indicadores de Inflação e Preços")
-        st.caption("Acompanhe os principais índices de preços e seus componentes para entender a dinâmica inflacionária no Brasil.")
         st.divider()
-
-        col1, col2 = st.columns(2)
-        with col1:
-            plot_indicator_with_analysis('bcb', 433, "IPCA (Variação Mensal)", 
-                "Mede a inflação oficial do país sob a ótica do consumidor. É o principal indicador para a meta de inflação do Banco Central.", unit="%"
-            )
-        with col2:
-            plot_indicator_with_analysis('bcb', 11427, "Média dos Núcleos de Inflação",
-                "Mede a tendência de fundo da inflação, excluindo os itens mais voláteis. É um indicador crucial para a decisão de juros do BCB.", unit="%"
-            )
+        c1, c2 = st.columns(2)
+        with c1: data = fetch_bcb_series({'data': 433}, start_date); plot_indicator_with_analysis(data, "IPCA (Variação Mensal)", "Mede a inflação oficial do país sob a ótica do consumidor.", unit="%")
+        with c2: data = fetch_bcb_series({'data': 11427}, start_date); plot_indicator_with_analysis(data, "Média dos Núcleos de Inflação", "Mede a tendência de fundo da inflação, excluindo voláteis.", unit="%")
         st.divider()
-        
-        st.markdown("##### Decomposição da Inflação ao Consumidor")
-        col3, col4 = st.columns(2)
-        with col3:
-            plot_indicator_with_analysis('bcb', 4449, "IPCA - Bens Industrializados",
-                "Mede a inflação dos produtos industriais, mais sensível ao câmbio e aos preços de commodities.", unit="%"
-            )
-        with col4:
-            plot_indicator_with_analysis('bcb', 4448, "IPCA - Serviços",
-                "Mede a inflação do setor de serviços, mais sensível à atividade econômica doméstica e aos salários.", unit="%"
-            )
+        c3, c4 = st.columns(2)
+        with c3: data = fetch_bcb_series({'data': 4449}, start_date); plot_indicator_with_analysis(data, "IPCA - Bens Industrializados", "Inflação de produtos industriais.", unit="%")
+        with c4: data = fetch_bcb_series({'data': 4448}, start_date); plot_indicator_with_analysis(data, "IPCA - Serviços", "Inflação do setor de serviços.", unit="%")
         st.divider()
-
-        plot_indicator_with_analysis('bcb', 189, "IGP-M (Variação Mensal)",
-            "Mede a inflação de forma mais ampla, incluindo preços no atacado e na construção. Conhecido como a 'inflação do aluguel'.", unit="%"
-        )
+        data = fetch_bcb_series({'data': 189}, start_date); plot_indicator_with_analysis(data, "IGP-M (Variação Mensal)", "Conhecido como a 'inflação do aluguel'.", unit="%")
 
     with subtab_br_yield:
         st.subheader("Análise da Curva de Juros Brasileira")
-        st.caption("Acompanhe a taxa básica de juros, o juro real e a inclinação da curva de juros pré-fixada.")
         st.divider()
-
         st.markdown("##### Forma da Curva de Juros Pré-Fixada Atual (ETTJ)")
-        
-        # Lógica para buscar os dados da curva de forma robusta
-        codes_br_yield = {"1 Ano": 12469, "2 Anos": 12470, "3 Anos": 12471, "5 Anos": 12473, "10 Anos": 12478}
-        yield_data_br = []
-        for name, code in codes_br_yield.items():
-            val = fetch_bcb_series({name: code}, start_date=datetime.now() - pd.Timedelta(days=10))
-            if not val.empty:
-                yield_data_br.append({'Prazo': name, 'Taxa (%)': val.iloc[-1, 0]})
-        
-        yield_curve_df_br = pd.DataFrame(yield_data_br)
+        yield_curve_df_br = get_brazilian_yield_curve()
         if not yield_curve_df_br.empty:
-            yield_curve_df_br['Prazo'] = pd.Categorical(yield_curve_df_br['Prazo'], categories=codes_br_yield.keys(), ordered=True)
-            yield_curve_df_br.sort_values('Prazo', inplace=True)
-            fig_curve = px.line(yield_curve_df_br, x='Prazo', y='Taxa (%)', title="Curva de Juros Pré-Fixada (Fonte: B3/Anbima)", markers=True)
+            fig_curve = px.line(yield_curve_df_br, x='Prazo', y='Taxa (%)', title="Curva de Juros Pré-Fixada", markers=True)
             st.plotly_chart(fig_curve, use_container_width=True)
         else:
             st.warning("Não foi possível carregar os dados para a forma da curva de juros brasileira.")
-        
         st.divider()
-        
         st.markdown("##### Taxas de Juros Chave")
-        col1, col2 = st.columns(2)
-        with col1:
-            # Usando a Meta Selic, que é mais estável para visualização
-            plot_indicator_with_analysis('bcb', {"SELIC Meta": 4390}, "Taxa Selic Meta (Anualizada)", "A principal taxa de juros de política monetária, definida pelo Copom.", unit="%")
-        with col2:
-            # (Código do Juro Real permanece o mesmo)
-        
+        c1, c2 = st.columns(2)
+        with c1: data = fetch_bcb_series({'data': 4390}, start_date); plot_indicator_with_analysis(data, "Taxa Selic Meta", "A principal taxa de juros de política monetária.", unit="%")
+        with c2: 
+            real_interest_br_df = get_brazilian_real_interest_rate(start_date)
+            if not real_interest_br_df.empty:
+                fig = px.area(real_interest_br_df, title="Taxa de Juro Real (Ex-Post)")
+                fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
         st.divider()
-        
         st.markdown("##### Spread da Curva de Juros (5 Anos - 2 Anos)")
-        juros_spread_br = fetch_bcb_series({"Juro 5 Anos": 12473, "Juro 2 Anos": 12470}, start_date)
-        if not juros_spread_br.empty and "Juro 5 Anos" in juros_spread_br.columns and "Juro 2 Anos" in juros_spread_br.columns:
-            spread_br = (juros_spread_br["Juro 5 Anos"] - juros_spread_br["Juro 2 Anos"]).dropna()
-            fig = px.area(spread_br, title="Spread 5 Anos - 2 Anos (Pré)")
-            fig.add_hline(y=0, line_dash="dash", line_color="gray")
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption("Mede a inclinação da curva. Spreads crescentes indicam expectativas de juros mais altos ou crescimento.")
-    
-    with subtab_br_bc:
-        st.subheader("Indicadores Monetários (BCB)")
-        plot_indicator(fetch_bcb_series(27841, start_date).pct_change(12).dropna()*100, "M2 (Var. Anual %)")
-        st.divider()
-        st.subheader("Análise do Discurso (Ata do Copom)")
-        copom_text = st.text_area("Cole aqui o texto da ata do Copom:", height=150, key="copom_text")
-        if st.button("Analisar Discurso do Copom"):
-            if copom_text.strip():
-                h_score, d_score = analyze_central_bank_discourse(copom_text, lang='pt')
-                c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅",h_score); c2.metric("Placar Dovish 🕊️",d_score)
-                bal = "Hawkish" if h_score > d_score else "Dovish" if d_score > h_score else "Neutro"
-                c3.metric("Balanço Final", bal)
-    
+        spread_data_br = fetch_bcb_series({"Juro 5 Anos": 12473, "Juro 2 Anos": 12470}, start_date)
+        if not spread_data_br.empty and all(col in spread_data_br.columns for col in ["Juro 5 Anos", "Juro 2 Anos"]):
+            spread_br = (spread_data_br["Juro 5 Anos"] - spread_data_br["Juro 2 Anos"]).dropna()
+            fig = px.area(spread_br, title="Spread 5 Anos - 2 Anos (Pré)"); fig.add_hline(y=0, line_dash="dash", line_color="gray"); st.plotly_chart(fig, use_container_width=True)
 
+    with subtab_br_bc:
+        st.subheader("Painel de Política Monetária - Banco Central do Brasil")
 # --- ABA EUA ---
 with tab_us:
     st.header("Principais Indicadores dos Estados Unidos")
