@@ -480,38 +480,50 @@ with tab_us:
         )
 
     with subtab_us_fed:
-        st.subheader("Acompanhamento Histórico do FOMC")
+        st.subheader("Painel de Política Monetária - Federal Reserve (Fed)")
+        st.caption("Acompanhe os indicadores, o balanço e a comunicação do banco central americano.")
         
-        # --- VISUALIZAÇÃO PÚBLICA (PARA TODOS OS USUÁRIOS) ---
+        # --- SEÇÃO 1: INDICADORES QUANTITATIVOS ---
+        st.markdown("##### Indicadores Chave da Política Monetária")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            plot_indicator_with_analysis("FEDFUNDS", "Fed Funds Rate", "A principal taxa de juros de política monetária, definida pelo FOMC.", unit="%")
+            plot_indicator_with_analysis("WALCL", "Ativos Totais no Balanço do Fed", "Mede o tamanho do balanço do Fed. Aumentos (QE) indicam política expansionista; reduções (QT) indicam política contracionista.", unit="$ Trilhões")
+        with col2:
+            plot_indicator_with_analysis("M2SL", "Agregado Monetário M2 (Var. % Anual)", "Mede a quantidade total de 'dinheiro' na economia. Sua variação pode ser um indicador antecedente de inflação.", unit="%", is_pct_change=True)
+            debt = fetch_fred_series("GFDEBTN", start_date); gdp = fetch_fred_series("GDP", start_date)
+            if not debt.empty and not gdp.empty:
+                gdp = gdp.resample('D').ffill()
+                debt_to_gdp = (debt / (gdp * 1_000_000_000)).dropna() * 100
+                fig_debt = px.area(debt_to_gdp, title="Dívida Pública / PIB (%)")
+                fig_debt.update_layout(showlegend=False, yaxis_title="%"); st.plotly_chart(fig_debt, use_container_width=True)
+                st.caption("Mede a alavancagem do governo. Níveis elevados podem pressionar os juros de longo prazo.")
+
+        st.divider()
+
+        # --- SEÇÃO 2: ACOMPANHAMENTO HISTÓRICO DO FOMC ---
+        st.subheader("Acompanhamento Histórico do Discurso do FOMC")
+        
         meetings = st.session_state.fomc_meetings
         if not meetings:
             st.info("Nenhum registro de reunião do FOMC foi adicionado ainda.")
         else:
-            # Ordena as reuniões da mais recente para a mais antiga
             sorted_meetings = sorted(meetings, key=lambda x: x['meeting_date'], reverse=True)
-            
             meeting_dates = [m['meeting_date'] for m in sorted_meetings]
             selected_date = st.selectbox("Selecione a data da Reunião do FOMC para analisar:", meeting_dates)
             
-            # Encontra a reunião selecionada
             selected_meeting = next((m for m in sorted_meetings if m['meeting_date'] == selected_date), None)
             
             if selected_meeting:
-                st.markdown(f"#### Análise da Reunião de {selected_date}")
                 st.metric("Decisão de Juros Tomada", selected_meeting.get("decision", "N/A"))
-                
-                # Análise de Discurso
                 h_score = selected_meeting["analysis"]["hawkish"]
                 d_score = selected_meeting["analysis"]["dovish"]
-                balance = h_score - d_score
-                final_tone = "Hawkish 🦅" if balance > 0 else "Dovish 🕊️" if balance < 0 else "Neutro 😐"
+                final_tone = "Hawkish 🦅" if h_score > d_score else "Dovish 🕊️" if d_score > h_score else "Neutro 😐"
                 
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Placar Hawkish", h_score)
-                col2.metric("Placar Dovish", d_score)
-                col3.metric("Tom Predominante", final_tone)
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Placar Hawkish", h_score); c2.metric("Placar Dovish", d_score); c3.metric("Tom Predominante", final_tone)
                 
-                # Download da Ata e Texto
                 if selected_meeting.get("pdf_path") and os.path.exists(selected_meeting["pdf_path"]):
                     with open(selected_meeting["pdf_path"], "rb") as pdf_file:
                         st.download_button("Baixar Ata em PDF", data=pdf_file, file_name=os.path.basename(selected_meeting["pdf_path"]))
@@ -519,35 +531,27 @@ with tab_us:
                 with st.expander("Ver texto completo da ata"):
                     st.text(selected_meeting.get("minutes_text", "Texto não disponível."))
 
-        # --- MODO EDITOR (VISÍVEL APENAS PARA ANALISTAS) ---
+        # --- MODO EDITOR ---
         if st.session_state.get("role") == "Analista":
             st.divider()
             st.markdown("---")
             st.header("📝 Modo Editor - Reuniões do FOMC")
-
+            
             editor_tab1, editor_tab2 = st.tabs(["Adicionar Nova Reunião", "Gerenciar Reuniões Existentes"])
             
             with editor_tab1:
                 with st.form("new_meeting_form"):
                     st.markdown("##### Adicionar Registro de Nova Reunião")
-                    m_date = st.date_input("Data da Reunião")
-                    m_decision = st.text_input("Decisão de Juros (ex: Manteve em 5.25%-5.50%)")
-                    m_text = st.text_area("Cole aqui o texto completo da ata:", height=250)
-                    m_pdf = st.file_uploader("Anexar arquivo da ata em PDF")
+                    m_date = st.date_input("Data da Reunião"); m_decision = st.text_input("Decisão de Juros (ex: Manteve em 5.25%-5.50%)")
+                    m_text = st.text_area("Cole aqui o texto completo da ata:", height=250); m_pdf = st.file_uploader("Anexar arquivo da ata em PDF")
                     
                     if st.form_submit_button("Salvar Nova Reunião"):
                         if m_text and m_decision:
                             h, d = analyze_central_bank_discourse(m_text, lang='en')
-                            new_meeting = {
-                                "meeting_date": m_date.strftime("%Y-%m-%d"),
-                                "decision": m_decision,
-                                "minutes_text": m_text,
-                                "pdf_path": "",
-                                "analysis": {"hawkish": h, "dovish": d}
-                            }
-                            if m_pdf is not None:
-                                if not os.path.exists(REPORTS_DIR): os.makedirs(REPORTS_DIR)
-                                file_path = os.path.join(REPORTS_DIR, m_pdf.name)
+                            new_meeting = {"meeting_date": m_date.strftime("%Y-%m-%d"), "decision": m_decision, "minutes_text": m_text, "pdf_path": "", "analysis": {"hawkish": h, "dovish": d}}
+                            if m_pdf:
+                                if not os.path.exists(REPORTS_DIR_FOMC): os.makedirs(REPORTS_DIR_FOMC)
+                                file_path = os.path.join(REPORTS_DIR_FOMC, m_pdf.name)
                                 with open(file_path, "wb") as f: f.write(m_pdf.getbuffer())
                                 new_meeting["pdf_path"] = file_path
                             
@@ -566,11 +570,11 @@ with tab_us:
                     for i, meeting in enumerate(sorted_meetings_delete):
                         st.markdown(f"**Reunião de {meeting['meeting_date']}**")
                         if st.button("Excluir este registro", key=f"delete_{meeting['meeting_date']}"):
-                            # Encontra e remove o item da lista principal
                             st.session_state.fomc_meetings = [m for m in st.session_state.fomc_meetings if m['meeting_date'] != meeting['meeting_date']]
                             save_json_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
                             st.success("Registro excluído!"); st.rerun()
                         st.divider()
+
 
 # --- ABA MERCADOS GLOBAIS ---
 with tab_global:
