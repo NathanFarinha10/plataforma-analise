@@ -87,16 +87,14 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
     - code: O código do indicador na API.
     - is_pct_change: Se True, calcula a variação anual (YoY).
     """
-    # --- LÓGICA PARA GARANTIR UMA CHAVE ÚNICA E ROBUSTA ---
-    # Usaremos o código do indicador para a chave, pois é um identificador único.
     if isinstance(code, dict):
-        unique_key_id = list(code.values())[0] # Pega o número do código. Ex: 4393
+        unique_key_id = list(code.values())[0]
     else:
-        unique_key_id = code # Para o caso do FRED, onde o código é uma string.
+        unique_key_id = code
     
     data_series = pd.Series(dtype='float64')
 
-    # 1. Buscar os dados da fonte correta
+    # 1. Buscar os dados
     if source == 'fred':
         data_series = fetch_fred_series(code, start_date)
     elif source == 'bcb':
@@ -123,33 +121,43 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
     prev_year_value = data_to_plot.iloc[-13] if len(data_to_plot) > 12 else None
 
     # 3. Plotar o gráfico e as métricas
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([3, 1])
     with col1:
         fig = px.area(data_to_plot, title=title)
         fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data", yaxis_tickformat=",.2f")
         if hline is not None:
             fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
-        
-        # CORREÇÃO FINAL: A chave agora é baseada no código do indicador.
         st.plotly_chart(fig, use_container_width=True, key=f"chart_{unique_key_id}")
 
     with col2:
         st.markdown(f"**Análise do Indicador**")
         st.caption(explanation)
+
+        # CORREÇÃO: Adicionado tratamento de erro (try-except) antes de formatar os valores
         if latest_value is not None:
-            # CORREÇÃO: Adicionando chaves únicas para os widgets st.metric
-            st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}", key=f"metric_last_{unique_key_id}")
+            try:
+                value_str = f"{float(latest_value):,.2f}"
+            except (ValueError, TypeError):
+                value_str = str(latest_value)
+            st.metric(label=f"Último Valor ({unit})", value=value_str, key=f"metric_last_{unique_key_id}")
 
         is_rate = (unit == "%")
         delta_unit = " p.p." if is_rate else "%"
 
         if prev_month_value is not None and latest_value is not None:
-            change_mom = latest_value - prev_month_value if is_rate else ((latest_value / prev_month_value) - 1) * 100 if prev_month_value != 0 else 0
-            st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{delta_unit}", delta=f"{change_mom:,.2f}", key=f"metric_mom_{unique_key_id}")
+            try:
+                change_mom = float(latest_value) - float(prev_month_value) if is_rate else ((float(latest_value) / float(prev_month_value)) - 1) * 100 if float(prev_month_value) != 0 else 0
+                st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{delta_unit}", delta=f"{change_mom:,.2f}", key=f"metric_mom_{unique_key_id}")
+            except (ValueError, TypeError):
+                st.info("Não foi possível calcular a variação mensal.")
+
 
         if prev_year_value is not None and latest_value is not None:
-            change_yoy = latest_value - prev_year_value if is_rate else ((latest_value / prev_year_value) - 1) * 100 if prev_year_value != 0 else 0
-            st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{delta_unit}", delta=f"{change_yoy:,.2f}", key=f"metric_yoy_{unique_key_id}")
+            try:
+                change_yoy = float(latest_value) - float(prev_year_value) if is_rate else ((float(latest_value) / float(prev_year_value)) - 1) * 100 if float(prev_year_value) != 0 else 0
+                st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{delta_unit}", delta=f"{change_yoy:,.2f}", key=f"metric_yoy_{unique_key_id}")
+            except (ValueError, TypeError):
+                st.info("Não foi possível calcular a variação anual.")
 # --- ADICIONE ESTAS FUNÇÕES FALTANTES NA SEÇÃO DE FUNÇÕES AUXILIARES ---
 
 @st.cache_data(ttl=3600)
