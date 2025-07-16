@@ -144,30 +144,41 @@ def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start
                 unit_label = "%"
             st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{unit_label}", delta=f"{change_yoy:,.2f}")
 
+# SUBSTITUA A SUA FUNÇÃO get_us_yield_curve_data PELA VERSÃO CORRIGIDA ABAIXO
+
 @st.cache_data(ttl=3600)
 def get_us_yield_curve_data():
     """Busca os dados mais recentes para montar a curva de juros dos EUA."""
     maturities_codes = {
-        '1 Mês': 'DGS1MO', '3 Meses': 'DGS3MO', '6 Meses': 'DGS6MO', 
-        '1 Ano': 'DGS1', '2 Anos': 'DGS2', '3 Anos': 'DGS3', 
-        '5 Anos': 'DGS5', '7 Anos': 'DGS7', '10 Anos': 'DGS10', 
-        '20 Anos': 'DGS20', '30 Anos': 'DGS30'
+        '1 Mês': 'DGS1MO', 
+        '3 Meses': 'DTB3',       # <-- CÓDIGO CORRIGIDO
+        '6 Meses': 'DTB6',       # <-- CÓDIGO CORRIGIDO
+        '1 Ano': 'DGS1', 
+        '2 Anos': 'DGS2', 
+        '3 Anos': 'DGS3', 
+        '5 Anos': 'DGS5', 
+        '7 Anos': 'DGS7', 
+        '10 Anos': 'DGS10', 
+        '20 Anos': 'DGS20', 
+        '30 Anos': 'DGS30'
     }
     yield_data = []
     for name, code in maturities_codes.items():
         try:
+            # Pega o último valor disponível para cada maturidade
             latest_value = fred.get_series_latest_release(code)
             if not latest_value.empty:
                 yield_data.append({'Prazo': name, 'Taxa (%)': latest_value.iloc[0]})
-        except: continue
+        except:
+            continue
     
+    # Ordena os prazos para o gráfico ficar correto
     maturities_order = list(maturities_codes.keys())
     df = pd.DataFrame(yield_data)
     if not df.empty:
         df['Prazo'] = pd.Categorical(df['Prazo'], categories=maturities_order, ordered=True)
         return df.sort_values('Prazo')
     return df
-
 
 def analyze_central_bank_discourse(text, lang='pt'):
     text = text.lower(); text = re.sub(r'\d+', '', text)
