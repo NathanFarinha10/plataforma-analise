@@ -301,9 +301,11 @@ with tab_us:
         
         col_pce3, col_pce4 = st.columns(2)
         with col_pce3:
-             plot_indicator_with_analysis("DGDSRG3Q086SBEA", "PCE - Bens", "Mede a inflação específica para a cesta de bens dentro do PCE.")
+             # CÓDIGO CORRIGIDO AQUI
+             plot_indicator_with_analysis("PCEG", "PCE - Bens", "Mede a inflação específica para a cesta de bens dentro do PCE.")
         with col_pce4:
-             plot_indicator_with_analysis("DPCERG3Q086SBEA", "PCE - Serviços", "Mede a inflação no setor de serviços dentro do PCE, componente crucial da análise do Fed.")
+             # CÓDIGO CORRIGIDO AQUI
+             plot_indicator_with_analysis("PCECS", "PCE - Serviços", "Mede a inflação no setor de serviços dentro do PCE, componente crucial da análise do Fed.")
 
         st.divider()
 
