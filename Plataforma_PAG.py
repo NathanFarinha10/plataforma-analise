@@ -123,11 +123,21 @@ else:
         st.subheader("Pulso dos Mercados (Últimos 30 dias)")
         data_sp500 = yf.download("^GSPC", period="1mo", progress=False)['Close']
         data_tnx = yf.download("^TNX", period="1mo", progress=False)['Close']
-        tab1, tab2 = st.tabs(["Ações (S&P 500)", "Juros (US 10Y)"])
-        with tab1:
-            st.line_chart(data_sp500)
-        with tab2:
-            st.line_chart(data_tnx)
+     # Bloco Novo e Corrigido
+    tab1, tab2, tab3 = st.tabs(["Ações (S&P 500)", "Juros (US 10Y)", "Última Visão de Player"])
+    with tab1:
+        # Usando Plotly para melhor auto-escala
+        fig_sp500 = px.line(sp500_hist, title="S&P 500 (Últimos 30 dias)")
+        fig_sp500.update_layout(showlegend=False, yaxis_title="Preço", xaxis_title=None)
+        st.plotly_chart(fig_sp500, use_container_width=True)
+    with tab2:
+        # Usando Plotly para melhor auto-escala
+        fig_tnx = px.line(tnx_hist, title="Juros EUA 10 Anos (Últimos 30 dias)")
+        fig_tnx.update_layout(showlegend=False, yaxis_title="Taxa %", xaxis_title=None)
+        st.plotly_chart(fig_tnx, use_container_width=True)
+    with tab3:
+        st.markdown("##### BlackRock | **Overweight** em Ações EUA")
+        st.caption("Relatório de Jul/2025: 'Vemos resiliência nos lucros corporativos, sustentando uma visão positiva para ações de qualidade no mercado americano.'")
 
     st.divider()
     st.header("Navegue pelos Módulos de Análise")
