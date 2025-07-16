@@ -113,17 +113,21 @@ def plot_indicator(data, title, y_label="Valor"):
 
 # SUBSTITUA A FUNÇÃO ANTIGA POR ESTA VERSÃO CORRETA
 
-def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start_date="2005-01-01", is_pct_change=False, hline=None):
+def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice", start_date="2005-01-01", is_pct_change=False, hline=None):
     """
-    Função final que plota o gráfico e exibe análise com variação percentual ou em p.p.
+    Função genérica que busca dados do FRED ou BCB e plota com análise.
     """
-    data = fetch_fred_series(code, start_date).dropna()
-    if data.empty:
-        st.warning(f"Não foi possível carregar os dados para {title}."); return
+    if source == 'fred':
+        data = fetch_fred_series(code, start_date).dropna()
+    elif source == 'bcb':
+        data = fetch_bcb_series(code, start_date).dropna()
+    else:
+        st.error("Fonte de dados desconhecida."); return
 
+    if data.empty: st.warning(f"Não foi possível carregar os dados para {title}."); return
+    
     data_to_plot = data.pct_change(12).dropna() * 100 if is_pct_change else data
-    if data_to_plot.empty:
-        st.warning(f"Dados insuficientes para calcular a variação de {title}."); return
+    if data_to_plot.empty: st.warning(f"Dados insuficientes para calcular a variação de {title}."); return
 
     latest_value = data_to_plot.iloc[-1]
     prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
@@ -133,32 +137,19 @@ def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start
     with col1:
         fig = px.area(data_to_plot, title=title)
         fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data")
-        if hline is not None:
-            fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
+        if hline is not None: fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
         st.plotly_chart(fig, use_container_width=True)
     with col2:
         st.markdown(f"**Análise do Indicador**"); st.caption(explanation)
         st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
-        
-        # --- LÓGICA CORRIGIDA E APRIMORADA PARA VARIAÇÃO ---
         is_rate = (unit == "%") or (is_pct_change)
-
         if prev_month_value is not None:
-            if is_rate: # Se for taxa, calcula variação em pontos percentuais (p.p.)
-                change_mom = latest_value - prev_month_value
-                unit_label = " p.p."
-            else: # Se for nível, calcula variação percentual (%)
-                change_mom = ((latest_value / prev_month_value) - 1) * 100 if prev_month_value != 0 else 0
-                unit_label = "%"
+            change_mom = ((latest_value / prev_month_value) - 1) * 100 if not is_rate and prev_month_value != 0 else latest_value - prev_month_value
+            unit_label = "%" if not is_rate else " p.p."
             st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{unit_label}", delta=f"{change_mom:,.2f}")
-
         if prev_year_value is not None:
-            if is_rate: # Se for taxa, calcula variação em p.p.
-                change_yoy = latest_value - prev_year_value
-                unit_label = " p.p."
-            else: # Se for nível, calcula variação em %
-                change_yoy = ((latest_value / prev_year_value) - 1) * 100 if prev_year_value != 0 else 0
-                unit_label = "%"
+            change_yoy = ((latest_value / prev_year_value) - 1) * 100 if not is_rate and prev_year_value != 0 else latest_value - prev_year_value
+            unit_label = "%" if not is_rate else " p.p."
             st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{unit_label}", delta=f"{change_yoy:,.2f}")
 
 # SUBSTITUA A SUA FUNÇÃO get_us_yield_curve_data PELA VERSÃO CORRIGIDA ABAIXO
@@ -223,11 +214,41 @@ tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unido
 # --- ABA BRASIL ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
-    subtab_br_activity, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade e Emprego", "Inflação e Juros", "Visão do BCB"])
+    subtab_br_activity, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade", "Inflação e Juros", "Visão do BCB"])
     
-    with subtab_br_activity:
-        st.subheader("Atividade Econômica")
-        plot_indicator(fetch_bcb_series(24369, start_date).pct_change(12).dropna() * 100, "IBC-Br (Var. Anual %)", "Variação %")
+   with subtab_br_activity:
+        st.subheader("Indicadores de Atividade Econômica e Confiança")
+        st.divider()
+
+        plot_indicator_with_analysis(
+            source='bcb', code=24369, title="IBC-Br (Prévia do PIB)",
+            explanation="Índice de Atividade Econômica do Banco Central, considerado uma 'prévia' mensal do PIB. Mede o ritmo da economia como um todo.",
+            unit="Índice"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            source='bcb', code=21859, title="Produção Industrial (PIM-PF)",
+            explanation="Mede a produção física da indústria de transformação e extrativa. Um termômetro da saúde do setor secundário.",
+            unit="Var. Anual %", is_pct_change=True
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            source='bcb', code=1473, title="Vendas no Varejo (PMC - Volume)",
+            explanation="Mede o volume de vendas do comércio varejista. Principal indicador para medir a força do consumo das famílias.",
+            unit="Var. Anual %", is_pct_change=True
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            source='bcb', code=24424, title="Volume de Serviços (PMS)",
+            explanation="Mede a receita bruta real do setor de serviços, que é o maior componente do PIB brasileiro. Essencial para entender a dinâmica da economia.",
+            unit="Var. Anual %", is_pct_change=True
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            source='bcb', code=4393.3, title="Índice de Confiança do Consumidor (ICC - FGV)",
+            explanation="Mede o quão otimistas os consumidores estão em relação à economia e suas finanças. É um indicador antecedente do consumo futuro.",
+            unit="Índice"
+        )
     
     with subtab_br_inflation:
         st.subheader("Inflação e Juros")
