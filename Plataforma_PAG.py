@@ -125,9 +125,9 @@ else:
         data_tnx = yf.download("^TNX", period="1mo", progress=False)['Close']
         tab1, tab2 = st.tabs(["Ações (S&P 500)", "Juros (US 10Y)"])
         with tab1:
-            st.area_chart(data_sp500)
+            st.line_chart(data_sp500)
         with tab2:
-            st.area_chart(data_tnx)
+            st.line_chart(data_tnx)
 
     st.divider()
     st.header("Navegue pelos Módulos de Análise")
