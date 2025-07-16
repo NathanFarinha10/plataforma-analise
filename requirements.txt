@@ -2,7 +2,7 @@ streamlit
 pandas
 fredapi
 plotly
-yfinance==2.58
+yfinance==0.2.65
 python-bcb
 matplotlib
 numpy-financial
