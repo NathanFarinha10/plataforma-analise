@@ -144,6 +144,30 @@ def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start
                 unit_label = "%"
             st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{unit_label}", delta=f"{change_yoy:,.2f}")
 
+@st.cache_data(ttl=3600)
+def get_us_yield_curve_data():
+    """Busca os dados mais recentes para montar a curva de juros dos EUA."""
+    maturities_codes = {
+        '1 Mês': 'DGS1MO', '3 Meses': 'DGS3MO', '6 Meses': 'DGS6MO', 
+        '1 Ano': 'DGS1', '2 Anos': 'DGS2', '3 Anos': 'DGS3', 
+        '5 Anos': 'DGS5', '7 Anos': 'DGS7', '10 Anos': 'DGS10', 
+        '20 Anos': 'DGS20', '30 Anos': 'DGS30'
+    }
+    yield_data = []
+    for name, code in maturities_codes.items():
+        try:
+            latest_value = fred.get_series_latest_release(code)
+            if not latest_value.empty:
+                yield_data.append({'Prazo': name, 'Taxa (%)': latest_value.iloc[0]})
+        except: continue
+    
+    maturities_order = list(maturities_codes.keys())
+    df = pd.DataFrame(yield_data)
+    if not df.empty:
+        df['Prazo'] = pd.Categorical(df['Prazo'], categories=maturities_order, ordered=True)
+        return df.sort_values('Prazo')
+    return df
+
 
 def analyze_central_bank_discourse(text, lang='pt'):
     text = text.lower(); text = re.sub(r'\d+', '', text)
@@ -320,11 +344,66 @@ with tab_us:
 
     
     with subtab_us_yield:
-        st.subheader("Spread da Curva de Juros (10 Anos - 2 Anos)")
-        s10a = fetch_fred_series("DGS10", start_date); s2a = fetch_fred_series("DGS2", start_date)
-        if not s10a.empty and not s2a.empty:
-            spread = (s10a - s2a).dropna()
-            fig = px.area(spread, title="Spread 10A - 2A"); fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
+        st.subheader("Análise da Curva de Juros Americana")
+        st.caption("A forma e os spreads da curva de juros são um dos principais indicadores antecedentes da atividade econômica.")
+        st.divider()
+
+        # 1. Gráfico da Curva de Juros Completa
+        st.markdown("##### Forma da Curva de Juros Atual")
+        yield_curve_df = get_us_yield_curve_data()
+        if not yield_curve_df.empty:
+            latest_date = fred.get_series_info('DGS10').loc['last_updated'].split(' ')[0]
+            fig_curve = px.line(yield_curve_df, x='Prazo', y='Taxa (%)', title=f"Curva de Juros do Tesouro Americano ({latest_date})", markers=True)
+            fig_curve.update_layout(xaxis_title="Vencimento do Título", yaxis_title="Taxa de Juros Anual (%)")
+            st.plotly_chart(fig_curve, use_container_width=True)
+        else:
+            st.warning("Não foi possível carregar os dados para a forma da curva de juros.")
+        
+        st.divider()
+
+        # 2. Spreads da Curva
+        st.markdown("##### Spreads da Curva de Juros (Indicadores de Recessão)")
+        col1, col2 = st.columns(2)
+        with col1:
+            juro_10a = fetch_fred_series("DGS10", start_date)
+            juro_2a = fetch_fred_series("DGS2", start_date)
+            if not juro_10a.empty and not juro_2a.empty:
+                spread_10y2y = (juro_10a - juro_2a).dropna()
+                fig = px.area(spread_10y2y, title="Spread 10 Anos - 2 Anos")
+                fig.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Inversão")
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("A inversão deste spread (quando fica abaixo de zero) historicamente antecede recessões econômicas.")
+
+        with col2:
+            juro_2a_s = fetch_fred_series("DGS2", start_date)
+            juro_3m = fetch_fred_series("DGS3MO", start_date)
+            if not juro_2a_s.empty and not juro_3m.empty:
+                spread_2y3m = (juro_2a_s - juro_3m).dropna()
+                fig = px.area(spread_2y3m, title="Spread 2 Anos - 3 Meses")
+                fig.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Inversão")
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("Considerado pelo Fed como um indicador de recessão de curto prazo muito confiável.")
+
+        st.divider()
+        
+        # 3. Taxas Chave de Referência
+        st.markdown("##### Taxas de Juros Chave")
+        col3, col4 = st.columns(2)
+        with col3:
+            plot_indicator_with_analysis(
+                code="FEDFUNDS", title="Fed Funds Rate (FFR)",
+                explanation="A principal taxa de juros de política monetária, definida pelo Federal Reserve. É a base para todas as outras taxas da economia.",
+                unit="%"
+            )
+        with col4:
+            plot_indicator_with_analysis(
+                code="DFII10", title="Juro Real de 10 Anos (10y TIPS)",
+                explanation="O rendimento de um título do tesouro de 10 anos que já é protegido contra a inflação. Representa a taxa de juro 'real' livre de risco.",
+                unit="%"
+            )
+
+
+    
     with subtab_us_real_estate:
         st.subheader("Indicadores do Mercado Imobiliário Americano")
         st.caption("O setor imobiliário é um dos principais motores do ciclo econômico dos EUA.")
