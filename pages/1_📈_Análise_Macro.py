@@ -98,8 +98,7 @@ def plot_indicator(data, title, y_label="Valor"):
 
 def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start_date="2005-01-01", is_pct_change=False, hline=None):
     """
-    Função aprimorada para plotar o gráfico e exibir uma caixa de análise completa
-    com último valor, variação mensal e variação anual.
+    Função final que plota o gráfico e exibe análise com variação percentual ou em p.p.
     """
     data = fetch_fred_series(code, start_date).dropna()
     if data.empty:
@@ -109,7 +108,6 @@ def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start
     if data_to_plot.empty:
         st.warning(f"Dados insuficientes para calcular a variação de {title}."); return
 
-    # Cálculos para as métricas
     latest_value = data_to_plot.iloc[-1]
     prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
     prev_year_value = data_to_plot.iloc[-13] if len(data_to_plot) > 12 else None
@@ -125,17 +123,26 @@ def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start
         st.markdown(f"**Análise do Indicador**"); st.caption(explanation)
         st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
         
-        # Lógica para exibir variação mensal
+        # --- LÓGICA CORRIGIDA E APRIMORADA PARA VARIAÇÃO ---
+        is_rate = (unit == "%") or (is_pct_change)
+
         if prev_month_value is not None:
-            change_mom = latest_value - prev_month_value
-            delta_label = " (p.p.)" if is_pct_change else " (Absoluta)"
-            st.metric(label=f"Variação Mensal{delta_label}", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
-            
-        # --- NOVO: Lógica para exibir variação anual ---
+            if is_rate: # Se for taxa, calcula variação em pontos percentuais (p.p.)
+                change_mom = latest_value - prev_month_value
+                unit_label = " p.p."
+            else: # Se for nível, calcula variação percentual (%)
+                change_mom = ((latest_value / prev_month_value) - 1) * 100 if prev_month_value != 0 else 0
+                unit_label = "%"
+            st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{unit_label}", delta=f"{change_mom:,.2f}")
+
         if prev_year_value is not None:
-            change_yoy = latest_value - prev_year_value
-            delta_label_yoy = " (p.p.)" if is_pct_change else " (Absoluta)"
-            st.metric(label=f"Variação Anual{delta_label_yoy}", value=f"{change_yoy:,.2f}", delta=f"{change_yoy:,.2f}")
+            if is_rate: # Se for taxa, calcula variação em p.p.
+                change_yoy = latest_value - prev_year_value
+                unit_label = " p.p."
+            else: # Se for nível, calcula variação em %
+                change_yoy = ((latest_value / prev_year_value) - 1) * 100 if prev_year_value != 0 else 0
+                unit_label = "%"
+            st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{unit_label}", delta=f"{change_yoy:,.2f}")
 
 
 def analyze_central_bank_discourse(text, lang='pt'):
