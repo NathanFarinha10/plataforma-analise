@@ -184,6 +184,43 @@ def fetch_market_data(tickers):
         st.error(f"Falha ao buscar dados de mercado com yfinance: {e}")
         return pd.DataFrame()
 
+# ADICIONE ESTA FUNÇÃO JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
+def calculate_performance_metrics(prices_df):
+    """Calcula métricas de performance para um DataFrame de preços."""
+    metrics = []
+    # Usaremos o juro de 3 meses do tesouro americano como taxa livre de risco
+    risk_free_rate_series = fetch_fred_series("DGS3MO", start_date)
+    risk_free_rate = (risk_free_rate_series.iloc[-1] / 100) if not risk_free_rate_series.empty else 0.02
+
+    for col in prices_df.columns:
+        prices = prices_df[col].dropna()
+        if prices.empty:
+            continue
+            
+        # Retorno no ano (YTD)
+        ytd_prices = prices[prices.index.year == datetime.now().year]
+        ytd_return = (ytd_prices.iloc[-1] / ytd_prices.iloc[0] - 1) if not ytd_prices.empty else 0
+
+        # Retorno em 12 meses
+        return_12m = (prices.iloc[-1] / prices.iloc[-252] - 1) if len(prices) > 252 else 0
+        
+        # Volatilidade Anualizada
+        returns = prices.pct_change()
+        volatility = returns.std() * np.sqrt(252)
+        
+        # Índice de Sharpe
+        sharpe_ratio = (return_12m - risk_free_rate) / volatility if volatility > 0 else 0
+        
+        metrics.append({
+            "Ativo": col,
+            "Retorno YTD": f"{ytd_return:.2%}",
+            "Retorno 12M": f"{return_12m:.2%}",
+            "Volatilidade Anual.": f"{volatility:.2%}",
+            "Índice de Sharpe": f"{sharpe_ratio:.2f}"
+        })
+        
+    return pd.DataFrame(metrics).set_index("Ativo")
+
 def analyze_central_bank_discourse(text, lang='en'):
     """Análise simples de sentimento baseada em palavras-chave."""
     text = text.lower()
@@ -907,11 +944,56 @@ with tab_global:
     st.header("Índices e Indicadores de Mercado Global")
     subtab_equity, subtab_commodities, subtab_risk, subtab_valuation, subtab_big_players = st.tabs(["Ações", "Commodities", "Risco", "Valuation", "Visão dos Big Players"])
     with subtab_equity:
-        tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Nasdaq": "^IXIC", "DAX": "^GDAXI"}
-        sel = st.multiselect("Selecione os índices:", options=list(tickers.keys()), default=["S&P 500", "Ibovespa"])
-        if sel:
-            data = fetch_market_data([tickers[i] for i in sel])
-            if not data.empty: st.plotly_chart(px.line((data / data.dropna().iloc[0]) * 100, title="Performance Normalizada (Base 100)"), use_container_width=True)
+    st.subheader("Análise de Performance de Índices Globais")
+    tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Nasdaq": "^IXIC", "DAX (Alemanha)": "^GDAXI", "Nikkei (Japão)": "^N225"}
+    
+    # --- SEÇÃO 1: GRÁFICO DE PERFORMANCE ---
+    sel = st.multiselect("Selecione os índices:", options=list(tickers.keys()), default=["S&P 500", "Ibovespa"])
+    
+    if sel:
+        selected_tickers_map = {name: code for name, code in tickers.items() if name in sel}
+        data = fetch_market_data(list(selected_tickers_map.values()))
+        
+        if not data.empty:
+            # Renomeia as colunas de volta para os nomes amigáveis
+            data.rename(columns={code: name for name, code in selected_tickers_map.items()}, inplace=True)
+            
+            st.markdown("##### Performance Normalizada (Base 100)")
+            st.plotly_chart(px.line((data / data.dropna().iloc[0]) * 100, title="Performance Relativa dos Índices"), use_container_width=True)
+            
+            # --- SEÇÃO 2: TABELA DE MÉTRICAS DE PERFORMANCE ---
+            st.markdown("##### Métricas de Performance e Risco")
+            st.dataframe(calculate_performance_metrics(data), use_container_width=True)
+            st.divider()
+
+            # --- SEÇÃO 3: ANÁLISE DE RISCO (VOLATILIDADE MÓVEL) ---
+            st.markdown("##### Volatilidade Móvel (60 dias)")
+            st.caption("A volatilidade móvel mostra a evolução do risco (desvio-padrão dos retornos) ao longo do tempo.")
+            rolling_vol = data.pct_change().rolling(window=60).std() * np.sqrt(252)
+            st.plotly_chart(px.line(rolling_vol, title="Volatilidade Anualizada Móvel (60d)"), use_container_width=True)
+            st.divider()
+
+    # --- SEÇÃO 4: ANÁLISE DE VALUATION ---
+    st.markdown("##### Análise de Valuation (P/L do S&P 500)")
+    # FRED: MULTPL/SP500_PE_RATIO_MONTH
+    plot_indicator_with_analysis(
+        'fred', "MULTPL/SP500_PE_RATIO_MONTH",
+        "Índice Preço/Lucro (P/L) do S&P 500",
+        "Mede quantas vezes o preço do índice negocia em relação ao lucro das empresas. Usado para avaliar se o mercado está 'caro' ou 'barato' frente à sua história.",
+        unit="Ratio"
+    )
+    st.divider()
+
+    # --- SEÇÃO 5: ANÁLISE DE ESTILO/FATOR ---
+    st.markdown("##### Análise de Estilo: Growth vs. Value")
+    factor_tickers = {"Growth (Crescimento)": "VUG", "Value (Valor)": "VTV"}
+    factor_data = fetch_market_data(list(factor_tickers.values()))
+    if not factor_data.empty:
+        factor_data.rename(columns={code: name for name, code in factor_tickers.items()}, inplace=True)
+        # Ratio de performance
+        factor_ratio = (factor_data["Growth (Crescimento)"] / factor_data["Value (Valor)"]).dropna()
+        st.plotly_chart(px.line(factor_ratio, title="Ratio de Performance: Growth vs. Value"), use_container_width=True)
+        st.caption("Um ratio crescente indica que ações de 'Growth' estão performando melhor que ações de 'Value'.")
     with subtab_commodities:
         c1,c2 = st.columns(2)
         comm_tickers = {"Petróleo WTI": "CL=F", "Ouro": "GC=F"}; data = fetch_market_data(list(comm_tickers.values()))
