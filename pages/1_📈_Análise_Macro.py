@@ -514,12 +514,12 @@ with tab_br:
                         st.divider()
     
     # --- ABA EUA (VERSÃO CORRIGIDA) ---
-    with tab_us:
-        st.header("Principais Indicadores dos Estados Unidos")
+with tab_us:
+    st.header("Principais Indicadores dos Estados Unidos")
         
-        subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_real_estate, subtab_us_yield, subtab_us_fed = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Imobiliário", "Curva de Juros", "Visão do Fed"])
+    subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_real_estate, subtab_us_yield, subtab_us_fed = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Imobiliário", "Curva de Juros", "Visão do Fed"])
         
-        with subtab_us_activity:
+    with subtab_us_activity:
         st.subheader("Indicadores de Atividade Econômica")
         st.caption("Analise a saúde dos setores industrial e de serviços, além da força do consumo, os principais motores da economia americana.")
         st.divider()
