@@ -623,15 +623,80 @@ with tab_us:
         # Expectativa de Inflação (Michigan) - FRED: MICH
         plot_indicator_with_analysis('fred', "MICH", "Expectativa de Inflação (Univ. Michigan - 1 Ano)", "Mede a inflação que os consumidores esperam para os próximos 12 meses. Importante para ancoragem das expectativas.", unit="%")
 
-    with subtab_us_real_estate:
+     with subtab_us_real_estate:
         st.subheader("Indicadores do Mercado Imobiliário Americano")
-        st.caption("O setor imobiliário é um dos principais motores do ciclo econômico dos EUA.")
+        st.caption("O setor imobiliário é um dos mais sensíveis aos juros e um dos principais motores do ciclo econômico dos EUA.")
         st.divider()
-        plot_indicator_with_analysis('fred', "MORTGAGE30US", "Taxa de Financiamento Imobiliário 30 Anos", "Mede o custo do crédito para compra de imóveis.", unit="%")
+    
+        # --- CUSTO DE FINANCIAMENTO ---
+        st.markdown("#### Custo de Financiamento")
+        # FRED: MORTGAGE30US
+        plot_indicator_with_analysis(
+            'fred', "MORTGAGE30US",
+            "Taxa de Financiamento Imobiliário 30 Anos",
+            "Mede o custo médio do crédito para compra de imóveis. É o principal fator que afeta a demanda por casas.",
+            unit="%"
+        )
         st.divider()
-        plot_indicator_with_analysis('fred', "CSUSHPISA", "Índice de Preços de Imóveis (Case-Shiller)", "Principal índice de preços de imóveis residenciais.", unit="Índice")
+    
+        # --- PIPELINE DE OFERTA ---
+        st.markdown("#### Pipeline de Oferta (Novas Construções)")
+        col1, col2 = st.columns(2)
+        with col1:
+            # FRED: PERMIT
+            plot_indicator_with_analysis(
+                'fred', "PERMIT",
+                "Permissões de Construção (Permits)",
+                "Número de novas autorizações de construção emitidas. É o principal indicador antecedente da atividade de construção futura.",
+                unit="Milhares", is_pct_change=True
+            )
+        with col2:
+            # FRED: HOUST
+            plot_indicator_with_analysis(
+                'fred', "HOUST",
+                "Casas Iniciadas (Housing Starts)",
+                "Número de novas construções de casas que foram iniciadas. Confirma a tendência apontada pelos 'Permits'.",
+                unit="Milhares", is_pct_change=True
+            )
         st.divider()
-        plot_indicator_with_analysis('fred', "PERMIT", "Permissões de Construção", "Indicador antecedente da atividade de construção.", unit="Milhares")
+        
+        # --- ATIVIDADE DE VENDAS E ESTOQUE ---
+        st.markdown("#### Atividade de Vendas e Estoque")
+        col3, col4 = st.columns(2)
+        with col3:
+            # FRED: HSN1F
+            plot_indicator_with_analysis(
+                'fred', "HSN1F",
+                "Venda de Casas Novas",
+                "Número de casas recém-construídas que foram vendidas. Mede a absorção da nova oferta pelo mercado.",
+                unit="Milhares", is_pct_change=True
+            )
+        with col4:
+            # FRED: EXHOSLUSM495S
+            plot_indicator_with_analysis(
+                'fred', "EXHOSLUSM495S",
+                "Venda de Casas Usadas",
+                "Número de casas existentes (usadas) que foram vendidas. Representa a maior parte do mercado imobiliário.",
+                unit="Milhares", is_pct_change=True
+            )
+        # FRED: NHFSEPUCS
+        plot_indicator_with_analysis(
+            'fred', "NHFSEPUCS",
+            "Estoque de Casas Novas à Venda",
+            "Número de casas recém-construídas que estão no mercado, mas ainda não foram vendidas. Mede o nível de 'estoque' do setor.",
+            unit="Milhares", is_pct_change=True
+        )
+        st.divider()
+    
+        # --- PREÇOS ---
+        st.markdown("#### Preços")
+        # FRED: CSUSHPISA
+        plot_indicator_with_analysis(
+            'fred', "CSUSHPISA",
+            "Índice de Preços de Imóveis (Case-Shiller)",
+            "Principal índice de preços de imóveis residenciais nas 20 maiores cidades dos EUA. Reflete o resultado da dinâmica de oferta e demanda.",
+            unit="Índice", is_pct_change=True
+        )
 
     with subtab_us_yield:
         # A implementação desta aba já estava correta, mas agora usará a função que definimos.
