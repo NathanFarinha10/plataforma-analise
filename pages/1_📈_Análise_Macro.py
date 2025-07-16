@@ -569,19 +569,59 @@ with tab_us:
     with subtab_us_inflation:
         st.subheader("Indicadores de Inflação e Preços")
         st.caption("A dinâmica da inflação é o principal fator que guia as decisões de juros do Federal Reserve.")
+        st.divider()
+    
+        # --- SEÇÃO DO CPI ---
         st.markdown("#### Consumer Price Index (CPI) - Inflação ao Consumidor")
+        # Gráficos do CPI Cheio e Núcleo (Anual)
         col_cpi1, col_cpi2 = st.columns(2)
         with col_cpi1:
             plot_indicator_with_analysis('fred', "CPIAUCSL", "CPI Cheio", "Mede a variação de preços de uma cesta ampla de bens e serviços.", is_pct_change=True, unit="Var. Anual %")
         with col_cpi2:
             plot_indicator_with_analysis('fred', "CPILFESL", "Core CPI (Núcleo)", "Exclui os componentes voláteis de alimentos e energia para medir a tendência de fundo da inflação.", is_pct_change=True, unit="Var. Anual %")
+    
+        st.markdown("###### Decomposição do CPI (Variação Mensal)")
+        # Gráficos dos Componentes de Bens e Serviços (Mensal)
+        col_cpi3, col_cpi4 = st.columns(2)
+        with col_cpi3:
+            # CPI de Bens Duráveis (MoM)
+            cpi_durables = fetch_fred_series("CUSR0000SAD", start_date).pct_change(1).dropna() * 100
+            if not cpi_durables.empty:
+                fig = px.area(cpi_durables, title="CPI - Bens Duráveis (Variação Mensal)")
+                fig.update_layout(showlegend=False, yaxis_title="Var. Mensal %")
+                fig.add_hline(y=0, line_dash="dash", line_color="gray")
+                st.plotly_chart(fig, use_container_width=True, key="cpi_durables")
+        with col_cpi4:
+            # CPI de Serviços (MoM)
+            cpi_services = fetch_fred_series("CUSR0000SASLE", start_date).pct_change(1).dropna() * 100
+            if not cpi_services.empty:
+                fig = px.area(cpi_services, title="CPI - Serviços (Variação Mensal)")
+                fig.update_layout(showlegend=False, yaxis_title="Var. Mensal %")
+                fig.add_hline(y=0, line_dash="dash", line_color="gray")
+                st.plotly_chart(fig, use_container_width=True, key="cpi_services")
         st.divider()
+    
+        # --- SEÇÃO DO PCE ---
         st.markdown("#### Personal Consumption Expenditures (PCE) - A Métrica do Fed")
         col_pce1, col_pce2 = st.columns(2)
         with col_pce1:
             plot_indicator_with_analysis('fred', "PCEPI", "PCE Cheio", "A medida de inflação preferida pelo Fed. Sua cesta é mais ampla e dinâmica que a do CPI.", is_pct_change=True, unit="Var. Anual %")
         with col_pce2:
             plot_indicator_with_analysis('fred', "PCEPILFE", "Core PCE (Núcleo)", "O indicador mais importante para a política monetária. A meta do Fed é de 2% para este núcleo.", is_pct_change=True, unit="Var. Anual %")
+        st.divider()
+    
+        # --- SEÇÃO DO PPI E EXPECTATIVAS ---
+        st.markdown("#### Inflação ao Produtor (PPI) e Expectativas")
+        col_ppi1, col_ppi2 = st.columns(2)
+        with col_ppi1:
+            # PPI Cheio (YoY) - FRED: PPIACO
+            plot_indicator_with_analysis('fred', "PPIACO", "PPI Cheio", "Mede a variação de preços na porta da fábrica. É um indicador antecedente da inflação ao consumidor (CPI).", is_pct_change=True, unit="Var. Anual %")
+        with col_ppi2:
+            # Core PPI (YoY) - FRED: WPSFD4131
+            plot_indicator_with_analysis('fred', "WPSFD4131", "Core PPI (Núcleo)", "Exclui os componentes voláteis de alimentos e energia do PPI para medir a tendência de custos de produção.", is_pct_change=True, unit="Var. Anual %")
+    
+        # Expectativa de Inflação (Michigan) - FRED: MICH
+        plot_indicator_with_analysis('fred', "MICH", "Expectativa de Inflação (Univ. Michigan - 1 Ano)", "Mede a inflação que os consumidores esperam para os próximos 12 meses. Importante para ancoragem das expectativas.", unit="%")
 
     with subtab_us_real_estate:
         st.subheader("Indicadores do Mercado Imobiliário Americano")
