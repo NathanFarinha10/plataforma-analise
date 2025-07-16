@@ -143,7 +143,7 @@ with tab_br:
 # --- ABA EUA ---
 with tab_us:
     st.header("Principais Indicadores dos Estados Unidos")
-    subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_bc, subtab_us_real_estate = st.tabs(["Atividade", "Inflação", "Curva de Juros", "Mercado Imobiliário", "Visão do Fed"])
+    subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_real_estate, subtab_us_bc = st.tabs(["Atividade", "Inflação", "Curva de Juros", "Mercado Imobiliário", "Visão do Fed"])
     
     with subtab_us_activity:
         st.subheader("Atividade Econômica")
