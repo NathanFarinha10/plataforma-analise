@@ -1,4 +1,4 @@
-# Arquivo: Plataforma_PAG.py (Versão Final com Splash, Login e Dashboard)
+# 0_🏠_Dashboard_Principal.py (Versão Final e Estável)
 
 import streamlit as st
 import yfinance as yf
@@ -19,7 +19,6 @@ st.set_page_config(
 try:
     st.sidebar.image("logo.png", use_container_width=True)
 except Exception:
-    # Se a logo não for encontrada, não quebra a aplicação
     st.sidebar.warning("Logo não encontrada.")
 
 # --- BANCO DE DADOS DE USUÁRIOS E SENHAS (PARA TESTE) ---
@@ -29,13 +28,10 @@ VALID_CREDENTIALS = {
 }
 
 # --- FUNÇÕES AUXILIARES ---
-@st.cache_data(ttl=900) # Cache de 15 minutos para dados de mercado
+@st.cache_data(ttl=900) # Cache de 15 minutos
 def get_homepage_market_data():
     """Busca os dados de mercado para o ticker do topo da página."""
-    tickers = {
-        "S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Dólar (USD/BRL)": "BRL=X",
-        "VIX": "^VIX", "US 10Y Treasury": "^TNX"
-    }
+    tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Dólar (USD/BRL)": "BRL=X", "VIX": "^VIX", "US 10Y Treasury": "^TNX"}
     data = yf.download(list(tickers.values()), period="5d", progress=False)['Close']
     results = {}
     for name, ticker in tickers.items():
@@ -47,9 +43,9 @@ def get_homepage_market_data():
     return results
 
 def login_form():
-    """Função para criar e gerenciar o formulário de login."""
+    """Cria e gerencia o formulário de login."""
+    st.image("logo.png", width=300) # Logo na tela de login
     st.title("Bem-vindo à Highpar Global")
-    st.markdown("Por favor, faça o login para continuar.")
     
     with st.form("login_form"):
         username = st.text_input("Usuário").lower()
@@ -69,47 +65,33 @@ def login_form():
 
 # --- LÓGICA DE EXIBIÇÃO PRINCIPAL ---
 
-# 1. TELA DE SPLASH (só roda uma vez por sessão)
-if 'splash_screen_done' not in st.session_state:
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        try:
-            st.image("logo.png", use_container_width=True)
-        except Exception:
-            st.markdown("<h1 style='text-align: center;'>Highpar Global</h1>", unsafe_allow_html=True)
-        with st.spinner("Carregando plataforma..."):
-            time.sleep(4)
-    st.session_state.splash_screen_done = True
-    st.rerun()
-
-# 2. TELA DE LOGIN (se o usuário não estiver autenticado)
+# 1. TELA DE LOGIN (se o usuário não estiver autenticado)
 if not st.session_state.get("authentication_status"):
-    login_form()
+    col1, col2, col3 = st.columns([1,1.5,1])
+    with col2:
+        login_form()
 
-# 3. DASHBOARD PRINCIPAL (se o usuário estiver autenticado)
+# 2. DASHBOARD PRINCIPAL (se o usuário estiver autenticado)
 else:
-    # Barra lateral para usuários logados
     with st.sidebar:
         st.write(f'Bem-vindo(a), *{st.session_state["name"]}*')
         if st.button("Logout"):
-            for key in list(st.session_state.keys()):
-                if key != 'splash_screen_done': del st.session_state[key]
+            for key in list(st.session_state.keys()): del st.session_state[key]
             st.rerun()
 
-    # Conteúdo do Dashboard
     st.title("Dashboard de Visão Geral - Highpar Global")
     st.caption(f"Dados de mercado atualizados em: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
     try:
         market_data = get_homepage_market_data()
         c1, c2, c3, c4, c5 = st.columns(5)
-        if "S&P 500" in market_data: c1.metric("S&P 500", f"{market_data['S&P 500']['price']:.2f}", f"{market_data['S&P 500']['change']:.2f}%")
-        if "Ibovespa" in market_data: c2.metric("Ibovespa", f"{market_data['Ibovespa']['price']:.2f}", f"{market_data['Ibovespa']['change']:.2f}%")
+        if "S&P 500" in market_data: c1.metric("S&P 500", f"{market_data['S&P 500']['price']:,.2f}", f"{market_data['S&P 500']['change']:.2f}%")
+        if "Ibovespa" in market_data: c2.metric("Ibovespa", f"{market_data['Ibovespa']['price']:,.2f}", f"{market_data['Ibovespa']['change']:.2f}%")
         if "Dólar (USD/BRL)" in market_data: c3.metric("Dólar (USD/BRL)", f"{market_data['Dólar (USD/BRL)']['price']:.2f}", f"{market_data['Dólar (USD/BRL)']['change']:.2f}%")
         if "US 10Y Treasury" in market_data: c4.metric("US 10Y Yield", f"{market_data['US 10Y Treasury']['price']:.2f}%", f"{market_data['US 10Y Treasury']['change']:.2f}%")
         if "VIX" in market_data: c5.metric("VIX (Volatilidade)", f"{market_data['VIX']['price']:.2f}", f"{market_data['VIX']['change']:.2f}%", delta_color="inverse")
     except Exception as e:
-        st.warning(f"Não foi possível carregar os dados do ticker de mercado no momento: {e}")
+        st.warning(f"Não foi possível carregar os dados do ticker de mercado no momento.")
 
     st.divider()
 
@@ -121,23 +103,21 @@ else:
 
     with col2:
         st.subheader("Pulso dos Mercados (Últimos 30 dias)")
+        
+        # --- CORREÇÃO APLICADA AQUI ---
+        # Baixa os dados ANTES de tentar criar os gráficos
         data_sp500 = yf.download("^GSPC", period="1mo", progress=False)['Close']
         data_tnx = yf.download("^TNX", period="1mo", progress=False)['Close']
-     # Bloco Novo e Corrigido
-    tab1, tab2, tab3 = st.tabs(["Ações (S&P 500)", "Juros (US 10Y)", "Última Visão de Player"])
-    with tab1:
-        # Usando Plotly para melhor auto-escala
-        fig_sp500 = px.line(sp500_hist, title="S&P 500 (Últimos 30 dias)")
-        fig_sp500.update_layout(showlegend=False, yaxis_title="Preço", xaxis_title=None)
-        st.plotly_chart(fig_sp500, use_container_width=True)
-    with tab2:
-        # Usando Plotly para melhor auto-escala
-        fig_tnx = px.line(tnx_hist, title="Juros EUA 10 Anos (Últimos 30 dias)")
-        fig_tnx.update_layout(showlegend=False, yaxis_title="Taxa %", xaxis_title=None)
-        st.plotly_chart(fig_tnx, use_container_width=True)
-    with tab3:
-        st.markdown("##### BlackRock | **Overweight** em Ações EUA")
-        st.caption("Relatório de Jul/2025: 'Vemos resiliência nos lucros corporativos, sustentando uma visão positiva para ações de qualidade no mercado americano.'")
+        
+        tab1, tab2 = st.tabs(["Ações (S&P 500)", "Juros (US 10Y)"])
+        with tab1:
+            fig_sp500 = px.line(data_sp500)
+            fig_sp500.update_layout(showlegend=False, yaxis_title="Preço", xaxis_title=None, title=None, margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig_sp500, use_container_width=True)
+        with tab2:
+            fig_tnx = px.line(data_tnx)
+            fig_tnx.update_layout(showlegend=False, yaxis_title="Taxa %", xaxis_title=None, title=None, margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig_tnx, use_container_width=True)
 
     st.divider()
     st.header("Navegue pelos Módulos de Análise")
