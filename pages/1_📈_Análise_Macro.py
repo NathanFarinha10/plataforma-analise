@@ -755,66 +755,99 @@ with tab_us:
                 st.plotly_chart(fig, use_container_width=True, key="spread_2y_3m")
 
     with subtab_us_fed:
-        # Esta seção também precisa usar a nova função de plotagem para padronização
         st.subheader("Painel de Política Monetária - Federal Reserve (Fed)")
-        st.caption("Acompanhe os indicadores, o balanço e a comunicação do banco central americano.")
-        st.markdown("##### Indicadores Chave da Política Monetária")
-        c1, c2 = st.columns(2)
-        with c1:
-            plot_indicator_with_analysis('fred', "FEDFUNDS", "Fed Funds Rate", "A principal taxa de juros de política monetária.", unit="%")
-        with c2:
-            # Dividindo por 1M para mostrar em trilhões
-            balance_sheet = fetch_fred_series("WALCL", start_date) / 1000000
-            plot_indicator_with_analysis(None, None, "Ativos Totais no Balanço do Fed", "Aumentos (QE) indicam política expansionista; reduções (QT) indicam contracionista.", unit="$ Trilhões")
-            # ^ Note: A chamada acima foi ajustada para não usar a função unificada
-            # devido à transformação manual (divisão por 1M).
-            # Uma abordagem mais limpa seria refatorar a plot_indicator_with_analysis
-            # para aceitar uma série já transformada. Por agora, o código original
-            # para esta parte específica pode ser mantido e ajustado se necessário.
-            # CORREÇÃO MANUAL PARA ESTE GRÁFICO ESPECÍFICO:
-            if not balance_sheet.empty:
-                 fig_bal = px.area(balance_sheet, title="Ativos Totais no Balanço do Fed ($ Trilhões)")
-                 st.plotly_chart(fig_bal, use_container_width=True)
-            else:
-                 st.warning("Não foi possível carregar dados do balanço do Fed.")
-
-        # O restante da sua aba do FED está correto, apenas substitua a chamada
-        # save_json_data por save_data
-        # ... no seu código, troque a linha:
-        # save_json_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
-        # por:
-        # save_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
+        st.caption("Acompanhe a economia, a saúde fiscal e os agregados monetários que guiam as decisões do banco central americano.")
+        st.divider()
+    
+        st.markdown("##### Indicadores Econômicos, Fiscais e Monetários")
+        
+        # --- NOVA ESTRUTURA DE INDICADORES ---
+        col1, col2 = st.columns(2)
+        with col1:
+            # PIB (Real GDP) - FRED: GDPC1
+            plot_indicator_with_analysis(
+                'fred', "GDPC1",
+                "PIB Real dos EUA",
+                "Mede o valor de todos os bens e serviços produzidos na economia, ajustado pela inflação. O principal termômetro da atividade econômica.",
+                unit="Var. Anual %",
+                is_pct_change=True
+            )
+        with col2:
+            # Dívida/PIB - FRED: GFDEGDQ188S
+            plot_indicator_with_analysis(
+                'fred', "GFDEGDQ188S",
+                "Dívida Pública / PIB",
+                "Mede a dívida total do governo federal como um percentual do PIB. Um indicador chave da saúde fiscal do país.",
+                unit="%"
+            )
+    
+        # Ativos do Fed - FRED: WALCL
+        balance_sheet = fetch_fred_series("WALCL", start_date)
+        if not balance_sheet.empty:
+            # A divisão por 1M é para exibir em Trilhões, por isso o gráfico é manual
+            fig_bal = px.area(balance_sheet / 1000000, title="Ativos Totais no Balanço do Fed")
+            fig_bal.update_layout(showlegend=False, yaxis_title="$ Trilhões")
+            st.plotly_chart(fig_bal, use_container_width=True, key="fed_balance_sheet")
+        else:
+            st.warning("Não foi possível carregar dados do balanço do Fed.")
+        
+        st.divider()
+        col3, col4 = st.columns(2)
+        with col3:
+            # M1 Money Supply - FRED: M1SL
+            plot_indicator_with_analysis(
+                'fred', "M1SL",
+                "Agregado Monetário M1",
+                "Mede a oferta de moeda mais líquida (papel-moeda e depósitos à vista).",
+                unit="Var. Anual %",
+                is_pct_change=True
+            )
+        with col4:
+            # M2 Money Supply - FRED: M2SL
+            plot_indicator_with_analysis(
+                'fred', "M2SL",
+                "Agregado Monetário M2",
+                "Medida mais ampla que o M1, incluindo também depósitos a prazo e fundos do mercado monetário.",
+                unit="Var. Anual %",
+                is_pct_change=True
+            )
+        
+        # --- SEÇÃO DE ANÁLISE DE DISCURSO (MANTIDA) ---
         st.divider()
         st.subheader("Acompanhamento Histórico do Discurso do FOMC")
         
-        meetings = st.session_state.fomc_meetings
+        meetings = st.session_state.get('fomc_meetings', [])
         if not meetings:
             st.info("Nenhum registro de reunião do FOMC foi adicionado ainda.")
         else:
+            # O resto da lógica de visualização e edição do FOMC continua aqui, inalterada...
             sorted_meetings = sorted(meetings, key=lambda x: x['meeting_date'], reverse=True)
             meeting_dates = [m['meeting_date'] for m in sorted_meetings]
-            selected_date = st.selectbox("Selecione a data da Reunião do FOMC para analisar:", meeting_dates)
+            selected_date = st.selectbox("Selecione a data da Reunião do FOMC para analisar:", meeting_dates, key="fomc_date_select")
             
             selected_meeting = next((m for m in sorted_meetings if m['meeting_date'] == selected_date), None)
             
             if selected_meeting:
                 st.metric("Decisão de Juros Tomada", selected_meeting.get("decision", "N/A"))
-                h_score = selected_meeting["analysis"]["hawkish"]
-                d_score = selected_meeting["analysis"]["dovish"]
+                h_score = selected_meeting.get("analysis", {}).get("hawkish", 0)
+                d_score = selected_meeting.get("analysis", {}).get("dovish", 0)
                 final_tone = "Hawkish 🦅" if h_score > d_score else "Dovish 🕊️" if d_score > h_score else "Neutro 😐"
                 
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Placar Hawkish", h_score); c2.metric("Placar Dovish", d_score); c3.metric("Tom Predominante", final_tone)
+                c1_fomc, c2_fomc, c3_fomc = st.columns(3)
+                c1_fomc.metric("Placar Hawkish", h_score)
+                c2_fomc.metric("Placar Dovish", d_score)
+                c3_fomc.metric("Tom Predominante", final_tone)
                 
                 if selected_meeting.get("pdf_path") and os.path.exists(selected_meeting["pdf_path"]):
                     with open(selected_meeting["pdf_path"], "rb") as pdf_file:
-                        st.download_button("Baixar Ata em PDF", data=pdf_file, file_name=os.path.basename(selected_meeting["pdf_path"]))
+                        st.download_button("Baixar Ata em PDF", data=pdf_file, file_name=os.path.basename(selected_meeting["pdf_path"]), key=f"download_fomc_{selected_date}")
                 
                 with st.expander("Ver texto completo da ata"):
                     st.text(selected_meeting.get("minutes_text", "Texto não disponível."))
-
-        # --- MODO EDITOR ---
+    
+        # --- MODO EDITOR (MANTIDO) ---
         if st.session_state.get("role") == "Analista":
+            # A lógica do modo editor do FOMC continua aqui, inalterada...
             st.divider()
             st.markdown("---")
             st.header("📝 Modo Editor - Reuniões do FOMC")
@@ -824,8 +857,10 @@ with tab_us:
             with editor_tab1:
                 with st.form("new_meeting_form"):
                     st.markdown("##### Adicionar Registro de Nova Reunião")
-                    m_date = st.date_input("Data da Reunião"); m_decision = st.text_input("Decisão de Juros (ex: Manteve em 5.25%-5.50%)")
-                    m_text = st.text_area("Cole aqui o texto completo da ata:", height=250); m_pdf = st.file_uploader("Anexar arquivo da ata em PDF")
+                    m_date = st.date_input("Data da Reunião", key="fomc_m_date")
+                    m_decision = st.text_input("Decisão de Juros (ex: Manteve em 5.25%-5.50%)", key="fomc_m_decision")
+                    m_text = st.text_area("Cole aqui o texto completo da ata:", height=250, key="fomc_m_text")
+                    m_pdf = st.file_uploader("Anexar arquivo da ata em PDF", key="fomc_m_pdf")
                     
                     if st.form_submit_button("Salvar Nova Reunião"):
                         if m_text and m_decision:
@@ -842,18 +877,18 @@ with tab_us:
                             st.success("Nova reunião salva com sucesso!"); st.rerun()
                         else:
                             st.error("Data, Decisão e Texto da Ata são campos obrigatórios.")
-
+    
             with editor_tab2:
                 st.markdown("##### Excluir um Registro de Reunião")
-                if not st.session_state.fomc_meetings:
+                if not st.session_state.get('fomc_meetings', []):
                     st.info("Nenhuma reunião para gerenciar.")
                 else:
                     sorted_meetings_delete = sorted(st.session_state.fomc_meetings, key=lambda x: x['meeting_date'], reverse=True)
                     for i, meeting in enumerate(sorted_meetings_delete):
                         st.markdown(f"**Reunião de {meeting['meeting_date']}**")
-                        if st.button("Excluir este registro", key=f"delete_{meeting['meeting_date']}"):
+                        if st.button("Excluir este registro", key=f"delete_fomc_{meeting['meeting_date']}"):
                             st.session_state.fomc_meetings = [m for m in st.session_state.fomc_meetings if m['meeting_date'] != meeting['meeting_date']]
-                            save_json_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
+                            save_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
                             st.success("Registro excluído!"); st.rerun()
                         st.divider()
 
