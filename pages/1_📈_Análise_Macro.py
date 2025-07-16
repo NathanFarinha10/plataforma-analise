@@ -233,37 +233,159 @@ tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unido
 # --- ABA BRASIL (VERSÃO CORRIGIDA E PADRONIZADA) ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
-    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_yield, subtab_br_bc = st.tabs(["Atividade", "Emprego", "Inflação", "Curva de Juros", "Visão do BCB"])
+    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_yield, subtab_br_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Curva de Juros", "Visão do BCB"])
     
     with subtab_br_activity:
         st.subheader("Indicadores de Atividade Econômica e Confiança")
+        st.caption("Acompanhe os principais setores que movem o PIB brasileiro, do sentimento do consumidor aos dados consolidados.")
         st.divider()
-        # CORREÇÃO: A chamada foi padronizada para o novo formato.
-        plot_indicator_with_analysis('bcb', {'IBC-Br': 24369}, "IBC-Br (Prévia do PIB)", "Índice de Atividade Econômica do BCB, considerado uma 'prévia' mensal do PIB.", "Índice")
+
+        # 1. Confiança do Consumidor
+        # Código SGS BCB: 4393
+        plot_indicator_with_analysis(
+            'bcb', {'ICC': 4393},
+            "Confiança do Consumidor (FGV)",
+            "Mede o otimismo dos consumidores em relação à economia. Níveis acima de 100 indicam otimismo. É um indicador antecedente do consumo.",
+            "Índice", hline=100
+        )
         st.divider()
-        # CORREÇÃO: A chamada foi padronizada para o novo formato.
-        plot_indicator_with_analysis('bcb', {'PIM': 21859}, "Produção Industrial", "Mede a produção física da indústria.", "Var. Anual %", is_pct_change=True)
+
+        # 2. Volume de Serviços
+        # Código SGS BCB: 21864 (variação anual)
+        plot_indicator_with_analysis(
+            'bcb', {'PMS': 21864},
+            "Volume de Serviços (PMS)",
+            "Mede a evolução do volume de receita do setor de serviços, o maior componente do PIB brasileiro.",
+            "Var. Anual %", is_pct_change=False # O dado já vem como variação
+        )
+        st.divider()
+
+        # 3. Produção Industrial
+        # Código SGS BCB: 21859 (variação anual)
+        plot_indicator_with_analysis(
+            'bcb', {'PIM': 21859},
+            "Produção Industrial (PIM-PF)",
+            "Mede a produção física da indústria de transformação e extrativa. Um termômetro da saúde do setor secundário.",
+            "Var. Anual %", is_pct_change=False # O dado já vem como variação
+        )
+        st.divider()
+
+        # 4. Vendas no Varejo
+        # Código SGS BCB: 7388 (varejo ampliado, variação anual)
+        plot_indicator_with_analysis(
+            'bcb', {'PMC': 7388},
+            "Vendas no Varejo Ampliado (PMC)",
+            "Mede o volume de vendas do comércio, incluindo veículos e material de construção. Principal termômetro do consumo das famílias.",
+            "Var. Anual %", is_pct_change=False # O dado já vem como variação
+        )
+        st.divider()
+
+        # 5. IBC-Br
+        # Código SGS BCB: 24369
+        plot_indicator_with_analysis(
+            'bcb', {'IBC-Br': 24369},
+            "IBC-Br (Prévia do PIB)",
+            "Índice de Atividade Econômica do BCB, considerado uma 'prévia' mensal do Produto Interno Bruto (PIB).",
+            "Índice"
+        )
 
     with subtab_br_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Brasileiro")
+        st.caption("Analise a dinâmica do emprego e da renda, fatores cruciais para o consumo e a saúde social do país.")
         st.divider()
-        # CORREÇÃO: A chamada foi padronizada para o novo formato.
-        # Nota: O código 24369 é do IBC-Br, o correto para PNADC seria 24369 (no BCB SGS) ou buscar outra fonte. 
-        # Mantendo 24369 como exemplo, mas idealmente seria um código específico de desemprego.
-        plot_indicator_with_analysis('bcb', {'Desemprego': 24369}, "Taxa de Desemprego (PNADC)", "Porcentagem da força de trabalho desocupada.", "%")
+
+        # 1. Taxa de Desemprego
+        # Código SGS BCB: 24369
+        plot_indicator_with_analysis(
+            'bcb', {'Desemprego': 24369},
+            "Taxa de Desemprego (PNADC)",
+            "Percentual da força de trabalho que está desocupada, mas procurando ativamente por emprego. Medido pela PNAD Contínua (IBGE).",
+            "%"
+        )
         st.divider()
-        # CORREÇÃO: A chamada foi padronizada para o novo formato.
-        plot_indicator_with_analysis('bcb', {'Renda': 28795}, "Renda Média Real (Trabalhador com Carteira)", "Variação anual do rendimento médio real do trabalhador com carteira assinada.", "Var. Anual %", is_pct_change=True)
+
+        # 2. Renda Real com Carteira (YoY)
+        # Código SGS BCB: 28795
+        plot_indicator_with_analysis(
+            'bcb', {'Renda Formal': 28795},
+            "Renda Média Real (Trabalhador com Carteira)",
+            "Variação real (descontada a inflação) acumulada em 12 meses do rendimento médio do trabalhador com carteira assinada no setor privado.",
+            "Var. Anual %",
+            is_pct_change=False # O dado já vem como variação
+        )
+        st.divider()
+
+        # 3. Renda Real do Setor Privado (YoY)
+        # Código SGS BCB: 28794
+        plot_indicator_with_analysis(
+            'bcb', {'Renda Total': 28794},
+            "Renda Média Real (Todos os Trabalhos - Setor Privado)",
+            "Variação real (descontada a inflação) acumulada em 12 meses do rendimento médio de todos os trabalhos no setor privado (formais e informais).",
+            "Var. Anual %",
+            is_pct_change=False # O dado já vem como variação
+        )
 
     with subtab_br_inflation:
         st.subheader("Indicadores de Inflação e Preços")
+        st.caption("Acompanhe a dinâmica de preços ao consumidor (IPCA) e ao produtor (IGP-M), fator essencial para as decisões de juros.")
         st.divider()
-        # CORREÇÃO: A chamada foi padronizada para o novo formato.
-        plot_indicator_with_analysis('bcb', {'IPCA': 433}, "IPCA (Variação Mensal)", "Mede a inflação oficial do país sob a ótica do consumidor.", unit="%")
-        st.divider()
-        # CORREÇÃO: A chamada foi padronizada para o novo formato.
-        plot_indicator_with_analysis('bcb', {'IGPM': 189}, "IGP-M (Variação Mensal)", "Mede a inflação de forma mais ampla, incluindo preços no atacado. Conhecido como a 'inflação do aluguel'.", unit="%")
 
+        # 1. IPCA (Cheio)
+        # Código SGS BCB: 433
+        plot_indicator_with_analysis(
+            'bcb', {'IPCA': 433},
+            "IPCA (Variação Mensal)",
+            "Índice de Preços ao Consumidor Amplo, a medida oficial de inflação no Brasil. A meta do BCB é baseada no seu acumulado em 12 meses.",
+            unit="%",
+            hline=0
+        )
+        st.divider()
+
+        # 2. Média dos Núcleos do IPCA
+        # Código SGS BCB: 11427
+        plot_indicator_with_analysis(
+            'bcb', {'Núcleos': 11427},
+            "Média dos Núcleos do IPCA (Variação Mensal)",
+            "Média das medidas de núcleo que excluem os itens mais voláteis. É usada pelo Banco Central para identificar a tendência da inflação.",
+            unit="%",
+            hline=0
+        )
+        st.divider()
+
+        # Layout para Bens e Serviços
+        st.markdown("##### Decomposição do IPCA: Bens vs. Serviços")
+        col1, col2 = st.columns(2)
+        with col1:
+            # 3. IPCA Bens Industrializados
+            # Código SGS BCB: 4449
+            plot_indicator_with_analysis(
+                'bcb', {'Bens': 4449},
+                "IPCA - Bens Industrializados (MoM)",
+                "Componente do IPCA que mede a variação de preços de produtos, sensíveis ao câmbio e custos de produção.",
+                unit="%",
+                hline=0
+            )
+        with col2:
+            # 4. IPCA Serviços
+            # Código SGS BCB: 4448
+            plot_indicator_with_analysis(
+                'bcb', {'Serviços': 4448},
+                "IPCA - Serviços (MoM)",
+                "Componente do IPCA que mede a variação de preços do setor de serviços, mais sensível à dinâmica do mercado de trabalho e salários.",
+                unit="%",
+                hline=0
+            )
+        st.divider()
+
+        # 5. IGP-M
+        # Código SGS BCB: 189
+        plot_indicator_with_analysis(
+            'bcb', {'IGPM': 189},
+            "IGP-M (Variação Mensal)",
+            "Índice Geral de Preços do Mercado. Mede a inflação de forma mais ampla, incluindo preços ao produtor. Conhecido como a 'inflação do aluguel'.",
+            unit="%",
+            hline=0
+        )
     with subtab_br_yield:
         # Nenhuma alteração necessária aqui, pois usa lógica de plotagem customizada.
         st.subheader("Análise da Curva de Juros Brasileira")
