@@ -292,20 +292,29 @@ with tab_us:
         st.divider()
 
         # --- PCE ---
+        # --- PCE CORRIGIDO ---
         st.markdown("#### Personal Consumption Expenditures (PCE) - A Métrica do Fed")
         col_pce1, col_pce2 = st.columns(2)
         with col_pce1:
-            plot_indicator_with_analysis("PCEPI", "PCE Cheio", "A medida de inflação preferida pelo Fed. Sua cesta é mais ampla e dinâmica que a do CPI.")
+            plot_indicator_with_analysis("PCEPI", "PCE Cheio", "A medida de inflação preferida pelo Fed.", is_pct_change=True, unit="Var. Anual %")
         with col_pce2:
-            plot_indicator_with_analysis("PCEPILFE", "Core PCE (Núcleo)", "O indicador mais importante para a política monetária. A meta do Fed é de 2% para este núcleo.")
+            plot_indicator_with_analysis("PCEPILFE", "Core PCE (Núcleo)", "O indicador mais importante para a política monetária. A meta do Fed é de 2% para este núcleo.", is_pct_change=True, unit="Var. Anual %")
         
-        col_pce3, col_pce4 = st.columns(2)
-        with col_pce3:
-             # CÓDIGO CORRIGIDO AQUI
-             plot_indicator_with_analysis("PCEG", "PCE - Bens", "Mede a inflação específica para a cesta de bens dentro do PCE.")
-        with col_pce4:
-             # CÓDIGO CORRIGIDO AQUI
-             plot_indicator_with_analysis("PCECS", "PCE - Serviços", "Mede a inflação no setor de serviços dentro do PCE, componente crucial da análise do Fed.")
+        # --- NOVA ANÁLISE DE CONTRIBUIÇÃO ---
+        st.markdown("###### Contribuição para a Inflação (Core PCE)")
+        contrib_codes = {
+            "Contribuição de Bens": "DPCGRG3M086SBEA",
+            "Contribuição de Serviços": "DPCSRG3M086SBEA"
+        }
+        contrib_df = pd.DataFrame()
+        for name, code in contrib_codes.items():
+            contrib_df[name] = fetch_fred_series(code, start_date)
+        
+        if not contrib_df.empty:
+            fig_contrib = px.bar(contrib_df.dropna(), title="Decomposição da Contribuição para o Core PCE (Anualizada)")
+            fig_contrib.update_layout(yaxis_title="Contribuição em Pontos Percentuais (p.p.)", xaxis_title="Data", barmode='stack', legend_title="Componente")
+            st.plotly_chart(fig_contrib, use_container_width=True)
+            st.caption("Este gráfico mostra o quanto, em pontos percentuais, a inflação de Bens e a de Serviços contribuíram para o número final do Core PCE.")
 
         st.divider()
 
