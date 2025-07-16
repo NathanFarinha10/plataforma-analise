@@ -87,7 +87,14 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
     - code: O código do indicador na API.
     - is_pct_change: Se True, calcula a variação anual (YoY).
     """
-    data_series = pd.Series(dtype='float64') # Inicializa uma série vazia
+    # --- LÓGICA PARA GARANTIR UMA CHAVE ÚNICA E ROBUSTA ---
+    # Usaremos o código do indicador para a chave, pois é um identificador único.
+    if isinstance(code, dict):
+        unique_key_id = list(code.values())[0] # Pega o número do código. Ex: 4393
+    else:
+        unique_key_id = code # Para o caso do FRED, onde o código é uma string.
+    
+    data_series = pd.Series(dtype='float64')
 
     # 1. Buscar os dados da fonte correta
     if source == 'fred':
@@ -103,7 +110,7 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
                  data_series = df.iloc[:, 0]
 
     if data_series is None or data_series.empty:
-        st.warning(f"Não foi possível carregar os dados para {title} ({code}).")
+        st.warning(f"Não foi possível carregar os dados para {title} ({unique_key_id}).")
         return
 
     # 2. Processar os dados
@@ -116,32 +123,33 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
     prev_year_value = data_to_plot.iloc[-13] if len(data_to_plot) > 12 else None
 
     # 3. Plotar o gráfico e as métricas
-    col1, col2 = st.columns([3, 1])
+    col1, col2 = st.columns(2)
     with col1:
         fig = px.area(data_to_plot, title=title)
         fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data", yaxis_tickformat=",.2f")
         if hline is not None:
             fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
         
-        # CORREÇÃO: Adicionada uma chave 'key' única para evitar o erro de ID duplicado.
-        st.plotly_chart(fig, use_container_width=True, key=f"chart_{title}")
+        # CORREÇÃO FINAL: A chave agora é baseada no código do indicador.
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{unique_key_id}")
 
     with col2:
         st.markdown(f"**Análise do Indicador**")
         st.caption(explanation)
         if latest_value is not None:
-            st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
+            # CORREÇÃO: Adicionando chaves únicas para os widgets st.metric
+            st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}", key=f"metric_last_{unique_key_id}")
 
         is_rate = (unit == "%")
         delta_unit = " p.p." if is_rate else "%"
 
         if prev_month_value is not None and latest_value is not None:
             change_mom = latest_value - prev_month_value if is_rate else ((latest_value / prev_month_value) - 1) * 100 if prev_month_value != 0 else 0
-            st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{delta_unit}", delta=f"{change_mom:,.2f}")
+            st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{delta_unit}", delta=f"{change_mom:,.2f}", key=f"metric_mom_{unique_key_id}")
 
         if prev_year_value is not None and latest_value is not None:
             change_yoy = latest_value - prev_year_value if is_rate else ((latest_value / prev_year_value) - 1) * 100 if prev_year_value != 0 else 0
-            st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{delta_unit}", delta=f"{change_yoy:,.2f}")
+            st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{delta_unit}", delta=f"{change_yoy:,.2f}", key=f"metric_yoy_{unique_key_id}")
 # --- ADICIONE ESTAS FUNÇÕES FALTANTES NA SEÇÃO DE FUNÇÕES AUXILIARES ---
 
 @st.cache_data(ttl=3600)
