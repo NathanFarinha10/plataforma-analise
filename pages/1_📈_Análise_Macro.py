@@ -165,12 +165,21 @@ def get_us_yield_curve_data():
 
 @st.cache_data(ttl=3600)
 def fetch_market_data(tickers):
+    """
+    Busca dados de fechamento de mercado para uma lista de tickers.
+    """
     try:
-        data = yf.download(tickers, start=start_date)['Adj Close']
+        # CORREÇÃO: Alterado de 'Adj Close' para 'Close' para maior robustez.
+        # A coluna 'Close' é mais universal entre diferentes tipos de ativos (índices, commodities, etc.)
+        data = yf.download(tickers, start=start_date)['Close']
+        
         # Se baixar só um ticker, o yfinance não retorna um DF, mas uma Série.
+        # Esta parte do código converte para DataFrame para manter a consistência.
         if isinstance(data, pd.Series):
             data = data.to_frame(tickers[0])
-        return data.dropna()
+            
+        return data.dropna(how='all') # Usar how='all' para não dropar linhas se um dos ativos não tiver dado no dia
+        
     except Exception as e:
         st.error(f"Falha ao buscar dados de mercado com yfinance: {e}")
         return pd.DataFrame()
