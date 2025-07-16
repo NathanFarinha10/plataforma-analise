@@ -189,18 +189,6 @@ with tab_us:
         st.subheader("Indicadores de Atividade, Produção e Consumo")
         st.divider()
 
-        plot_indicator_with_analysis(
-            code="NAPM", title="PMI de Manufatura (ISM)",
-            explanation="Principal indicador antecedente para a indústria. Leituras acima de 50 indicam expansão do setor, enquanto valores abaixo de 50 indicam contração.",
-            unit="Índice", hline=50
-        )
-        st.divider()
-        plot_indicator_with_analysis(
-            code="NMFCI", title="PMI de Serviços (ISM)",
-            explanation="Indicador antecedente para o setor de serviços, que representa a maior parte da economia dos EUA. Acima de 50 indica expansão; abaixo, contração.",
-            unit="Índice", hline=50
-        )
-        st.divider()
 
         plot_indicator_with_analysis(
             code="INDPRO", title="Produção Industrial",
