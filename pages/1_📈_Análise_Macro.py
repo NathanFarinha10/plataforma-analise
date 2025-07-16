@@ -154,7 +154,6 @@ with tab_br:
 
     with subtab_br_yield:
         st.subheader("Análise da Curva de Juros Brasileira")
-        st.divider()
         st.markdown("##### Forma da Curva de Juros Pré-Fixada Atual (ETTJ)")
         yield_curve_df_br = get_brazilian_yield_curve()
         if not yield_curve_df_br.empty:
@@ -162,22 +161,27 @@ with tab_br:
             st.plotly_chart(fig_curve, use_container_width=True)
         else:
             st.warning("Não foi possível carregar os dados para a forma da curva de juros brasileira.")
+        
         st.divider()
         st.markdown("##### Taxas de Juros Chave")
-        c1, c2 = st.columns(2)
-        with c1: data = fetch_bcb_series({'data': 4390}, start_date); plot_indicator_with_analysis(data, "Taxa Selic Meta", "A principal taxa de juros de política monetária.", unit="%")
-        with c2: 
+        col1, col2 = st.columns(2)
+        with col1:
+            data_selic = fetch_bcb_series({'Selic': 4390}, start_date)
+            if not data_selic.empty: plot_indicator_with_analysis(data_selic['Selic'], "Taxa Selic Meta", "A principal taxa de juros de política monetária.", unit="%")
+        with col2: 
             real_interest_br_df = get_brazilian_real_interest_rate(start_date)
             if not real_interest_br_df.empty:
                 fig = px.area(real_interest_br_df, title="Taxa de Juro Real (Ex-Post)")
                 fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
+        
         st.divider()
         st.markdown("##### Spread da Curva de Juros (5 Anos - 2 Anos)")
         spread_data_br = fetch_bcb_series({"Juro 5 Anos": 12473, "Juro 2 Anos": 12470}, start_date)
         if not spread_data_br.empty and all(col in spread_data_br.columns for col in ["Juro 5 Anos", "Juro 2 Anos"]):
             spread_br = (spread_data_br["Juro 5 Anos"] - spread_data_br["Juro 2 Anos"]).dropna()
-            fig = px.area(spread_br, title="Spread 5 Anos - 2 Anos (Pré)"); fig.add_hline(y=0, line_dash="dash", line_color="gray"); st.plotly_chart(fig, use_container_width=True)
-
+            fig_spread = px.area(spread_br, title="Spread 5 Anos - 2 Anos (Pré)")
+            fig_spread.add_hline(y=0, line_dash="dash", line_color="gray"); st.plotly_chart(fig_spread, use_container_width=True)
+    
     with subtab_br_bc:
         st.subheader("Painel de Política Monetária - Banco Central do Brasil")
 # --- ABA EUA ---
