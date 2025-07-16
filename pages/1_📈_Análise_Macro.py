@@ -288,7 +288,7 @@ with tab_us:
         plot_indicator_with_analysis('fred', "UMCSENT", "Sentimento do Consumidor (Univ. Michigan)", "Mede a confiança dos consumidores. Um sentimento alto geralmente precede maiores gastos.", "Índice")
 
 
-     with subtab_us_jobs:
+    with subtab_us_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Americano")
         st.divider()
         plot_indicator_with_analysis('fred', "UNRATE", "Taxa de Desemprego", "A porcentagem da força de trabalho que está desempregada, mas procurando por emprego.", "%")
@@ -329,7 +329,7 @@ with tab_us:
             plot_indicator_with_analysis('fred', "MICH", "Expectativa de Inflação (Michigan, 1 Ano)", "Mede a inflação que os consumidores esperam para os próximos 12 meses. Importante para o Fed, pois as expectativas podem influenciar a inflação futura.", unit="%")
 
     
-   with subtab_us_yield:
+    with subtab_us_yield:
         st.subheader("Análise da Curva de Juros Americana")
         st.caption("A forma e os spreads da curva de juros são um dos principais indicadores antecedentes da atividade econômica.")
         st.divider()
