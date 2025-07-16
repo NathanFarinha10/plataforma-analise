@@ -96,20 +96,19 @@ def plot_indicator(data, title, y_label="Valor"):
 
 # SUBSTITUA A FUNÇÃO ANTIGA POR ESTA VERSÃO CORRETA
 
-def plot_indicator_with_analysis(data, title, explanation, unit="", hline=None):
-    """
-    Recebe uma SÉRIE DE DADOS já processada, plota o gráfico e exibe a caixa de análise.
-    """
+def plot_indicator_with_analysis(code, title, explanation, unit="", start_date="2005-01-01", is_pct_change=False, hline=None):
+    data = fetch_fred_series(code, start_date).dropna()
     if data.empty:
-        st.warning(f"Dados para '{title}' estão vazios ou não puderam ser processados."); return
+        st.warning(f"Não foi possível carregar os dados para {title}."); return
 
-    latest_value = data.iloc[-1]
-    prev_value = data.iloc[-2] if len(data) > 1 else None
-    change_from_prev = latest_value - prev_value if prev_value is not None else None
+    data_to_plot = data.pct_change(12).dropna() * 100 if is_pct_change else data
 
+    latest_value = data_to_plot.iloc[-1]
+    prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
+    
     col1, col2 = st.columns([3, 1])
     with col1:
-        fig = px.area(data, title=title)
+        fig = px.area(data_to_plot, title=title)
         fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data")
         if hline is not None:
             fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
@@ -117,8 +116,9 @@ def plot_indicator_with_analysis(data, title, explanation, unit="", hline=None):
     with col2:
         st.markdown(f"**Análise do Indicador**"); st.caption(explanation)
         st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
-        if change_from_prev is not None:
-            st.metric(label="Variação (vs. Período Ant.)", value=f"{change_from_prev:,.2f}", delta=f"{change_from_prev:,.2f}")
+        if prev_month_value is not None:
+            change_mom = latest_value - prev_month_value
+            st.metric(label="Variação Mensal", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
 
 
 def analyze_central_bank_discourse(text, lang='pt'):
