@@ -65,9 +65,25 @@ fred = get_fred_api()
 
 # --- FUNÇÕES AUXILIARES ---
 @st.cache_data(ttl=3600)
+# SUBSTITUA A SUA FUNÇÃO fetch_fred_series POR ESTA VERSÃO DE DIAGNÓSTICO
+
+@st.cache_data(ttl=3600)
 def fetch_fred_series(code, start_date):
-    try: return fred.get_series(code, start_date)
-    except: return pd.Series(dtype='float64')
+    """Busca uma única série do FRED de forma robusta e com diagnóstico de erro."""
+    try:
+        series = fred.get_series(code, start_date)
+        
+        # Verifica se a API retornou uma série vazia sem dar erro
+        if series.empty:
+            st.error(f"DEBUG: A chamada para o código '{code}' retornou uma série de dados vazia.")
+            return pd.Series(dtype='float64')
+            
+        return series
+        
+    except Exception as e:
+        # PONTO CHAVE: Exibe a mensagem de erro real na tela
+        st.error(f"DEBUG: Ocorreu uma exceção ao buscar o código '{code}': {e}")
+        return pd.Series(dtype='float64')
 
 @st.cache_data(ttl=3600)
 def fetch_bcb_series(code, start_date):
