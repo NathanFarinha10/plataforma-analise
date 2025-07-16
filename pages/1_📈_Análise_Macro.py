@@ -465,53 +465,53 @@ with tab_br:
                 with st.expander("Ver texto completo da ata"):
                     st.text(selected_meeting.get("minutes_text", "Texto não disponível."))
 
-    # --- MODO EDITOR (ADAPTADO PARA O COPOM) ---
-    if st.session_state.get("role") == "Analista":
-        st.divider()
-        st.markdown("---")
-        st.header("📝 Modo Editor - Reuniões do COPOM")
-        
-        editor_tab1, editor_tab2 = st.tabs(["Adicionar Nova Reunião", "Gerenciar Reuniões Existentes"])
-        
-        with editor_tab1:
-            with st.form("new_copom_meeting_form"):
-                st.markdown("##### Adicionar Registro de Nova Reunião do COPOM")
-                m_date = st.date_input("Data da Reunião", key="copom_m_date")
-                m_decision = st.text_input("Decisão da Selic (ex: Manteve em 10,50%)", key="copom_m_decision")
-                m_text = st.text_area("Cole aqui o texto completo da ata:", height=250, key="copom_m_text")
-                m_pdf = st.file_uploader("Anexar arquivo da ata em PDF", key="copom_m_pdf")
-                
-                if st.form_submit_button("Salvar Nova Reunião do COPOM"):
-                    if m_text and m_decision:
-                        # ADAPTADO PARA O BCB: lang='pt'
-                        h, d = analyze_central_bank_discourse(m_text, lang='pt')
-                        new_meeting = {"meeting_date": m_date.strftime("%Y-%m-%d"), "decision": m_decision, "minutes_text": m_text, "pdf_path": "", "analysis": {"hawkish": h, "dovish": d}}
-                        
-                        if m_pdf:
-                            if not os.path.exists(REPORTS_DIR_COPOM): os.makedirs(REPORTS_DIR_COPOM)
-                            file_path = os.path.join(REPORTS_DIR_COPOM, m_pdf.name)
-                            with open(file_path, "wb") as f: f.write(m_pdf.getbuffer())
-                            new_meeting["pdf_path"] = file_path
-                        
-                        st.session_state.copom_meetings.append(new_meeting)
-                        save_data(st.session_state.copom_meetings, COPOM_MEETINGS_FILE)
-                        st.success("Nova reunião do COPOM salva com sucesso!"); st.rerun()
-                    else:
-                        st.error("Data, Decisão e Texto da Ata são campos obrigatórios.")
-
-        with editor_tab2:
-            st.markdown("##### Excluir um Registro de Reunião")
-            if not st.session_state.get('copom_meetings', []):
-                st.info("Nenhuma reunião para gerenciar.")
-            else:
-                sorted_meetings_delete = sorted(st.session_state.copom_meetings, key=lambda x: x['meeting_date'], reverse=True)
-                for i, meeting in enumerate(sorted_meetings_delete):
-                    st.markdown(f"**Reunião de {meeting['meeting_date']}**")
-                    if st.button("Excluir este registro", key=f"delete_copom_{meeting['meeting_date']}"):
-                        st.session_state.copom_meetings = [m for m in st.session_state.copom_meetings if m['meeting_date'] != meeting['meeting_date']]
-                        save_data(st.session_state.copom_meetings, COPOM_MEETINGS_FILE)
-                        st.success("Registro excluído!"); st.rerun()
-                    st.divider()
+        # --- MODO EDITOR (ADAPTADO PARA O COPOM) ---
+        if st.session_state.get("role") == "Analista":
+            st.divider()
+            st.markdown("---")
+            st.header("📝 Modo Editor - Reuniões do COPOM")
+            
+            editor_tab1, editor_tab2 = st.tabs(["Adicionar Nova Reunião", "Gerenciar Reuniões Existentes"])
+            
+            with editor_tab1:
+                with st.form("new_copom_meeting_form"):
+                    st.markdown("##### Adicionar Registro de Nova Reunião do COPOM")
+                    m_date = st.date_input("Data da Reunião", key="copom_m_date")
+                    m_decision = st.text_input("Decisão da Selic (ex: Manteve em 10,50%)", key="copom_m_decision")
+                    m_text = st.text_area("Cole aqui o texto completo da ata:", height=250, key="copom_m_text")
+                    m_pdf = st.file_uploader("Anexar arquivo da ata em PDF", key="copom_m_pdf")
+                    
+                    if st.form_submit_button("Salvar Nova Reunião do COPOM"):
+                        if m_text and m_decision:
+                            # ADAPTADO PARA O BCB: lang='pt'
+                            h, d = analyze_central_bank_discourse(m_text, lang='pt')
+                            new_meeting = {"meeting_date": m_date.strftime("%Y-%m-%d"), "decision": m_decision, "minutes_text": m_text, "pdf_path": "", "analysis": {"hawkish": h, "dovish": d}}
+                            
+                            if m_pdf:
+                                if not os.path.exists(REPORTS_DIR_COPOM): os.makedirs(REPORTS_DIR_COPOM)
+                                file_path = os.path.join(REPORTS_DIR_COPOM, m_pdf.name)
+                                with open(file_path, "wb") as f: f.write(m_pdf.getbuffer())
+                                new_meeting["pdf_path"] = file_path
+                            
+                            st.session_state.copom_meetings.append(new_meeting)
+                            save_data(st.session_state.copom_meetings, COPOM_MEETINGS_FILE)
+                            st.success("Nova reunião do COPOM salva com sucesso!"); st.rerun()
+                        else:
+                            st.error("Data, Decisão e Texto da Ata são campos obrigatórios.")
+    
+            with editor_tab2:
+                st.markdown("##### Excluir um Registro de Reunião")
+                if not st.session_state.get('copom_meetings', []):
+                    st.info("Nenhuma reunião para gerenciar.")
+                else:
+                    sorted_meetings_delete = sorted(st.session_state.copom_meetings, key=lambda x: x['meeting_date'], reverse=True)
+                    for i, meeting in enumerate(sorted_meetings_delete):
+                        st.markdown(f"**Reunião de {meeting['meeting_date']}**")
+                        if st.button("Excluir este registro", key=f"delete_copom_{meeting['meeting_date']}"):
+                            st.session_state.copom_meetings = [m for m in st.session_state.copom_meetings if m['meeting_date'] != meeting['meeting_date']]
+                            save_data(st.session_state.copom_meetings, COPOM_MEETINGS_FILE)
+                            st.success("Registro excluído!"); st.rerun()
+                        st.divider()
     
 # --- ABA EUA (VERSÃO CORRIGIDA) ---
 with tab_us:
