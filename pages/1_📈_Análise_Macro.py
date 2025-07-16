@@ -22,6 +22,8 @@ DATA_FILE = "recommendations.csv"
 RECOMMENDATIONS_FILE = "recommendations.csv"
 MANAGER_VIEWS_FILE = "manager_views.json"
 REPORTS_DIR = "reports"
+FOMC_MEETINGS_FILE = "fomc_meetings.json"
+REPORTS_DIR = "reports_fomc" # Diretório para atas do FOMC
 
 # --- Verifica se o usuário está logado ---
 if not st.session_state.get("authentication_status"):
@@ -50,6 +52,21 @@ def load_data():
     return recs, views
 
 recommendations_df, manager_views = load_data()
+
+# --- FUNÇÕES DE CARREGAMENTO E SALVAMENTO DE DADOS ---
+def load_json_data(file_path):
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return [] # Retorna lista vazia se o arquivo não existir
+
+def save_json_data(data, file_path):
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+# --- CARREGAMENTO INICIAL DOS DADOS DO FOMC ---
+if 'fomc_meetings' not in st.session_state:
+    st.session_state.fomc_meetings = load_json_data(FOMC_MEETINGS_FILE)
 
 # --- INICIALIZAÇÃO DAS APIS ---
 @st.cache_resource
@@ -463,57 +480,97 @@ with tab_us:
         )
 
     with subtab_us_fed:
-        st.subheader("Painel de Política Monetária - Federal Reserve (Fed)")
-        st.caption("Acompanhe as ferramentas e os indicadores que guiam as decisões do banco central americano.")
-        st.divider()
-
-        # Seção de Política de Juros
-        st.markdown("##### Política de Taxa de Juros")
-        ffr_data = fetch_fred_series("FEDFUNDS", start_date)
-        if not ffr_data.empty:
-            ffr_target_upper = fetch_fred_series("FEDTARU", start_date)
-            ffr_target_lower = fetch_fred_series("FEDTARL", start_date)
+        st.subheader("Acompanhamento Histórico do FOMC")
+        
+        # --- VISUALIZAÇÃO PÚBLICA (PARA TODOS OS USUÁRIOS) ---
+        meetings = st.session_state.fomc_meetings
+        if not meetings:
+            st.info("Nenhum registro de reunião do FOMC foi adicionado ainda.")
+        else:
+            # Ordena as reuniões da mais recente para a mais antiga
+            sorted_meetings = sorted(meetings, key=lambda x: x['meeting_date'], reverse=True)
             
-            fig = px.line(ffr_data, title="Fed Funds Rate (Efetiva vs. Meta)")
-            fig.add_scatter(x=ffr_target_upper.index, y=ffr_target_upper, mode='lines', name='Meta Superior', line=dict(dash='dash', color='gray'))
-            fig.add_scatter(x=ffr_target_lower.index, y=ffr_target_lower, mode='lines', name='Meta Inferior', line=dict(dash='dash', color='gray'))
-            fig.update_layout(yaxis_title="Taxa (%)", legend_title="Série")
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption("O gráfico mostra a taxa efetiva de juros (azul) em comparação com a banda da meta definida pelo Fed (cinza).")
-        st.divider()
+            meeting_dates = [m['meeting_date'] for m in sorted_meetings]
+            selected_date = st.selectbox("Selecione a data da Reunião do FOMC para analisar:", meeting_dates)
+            
+            # Encontra a reunião selecionada
+            selected_meeting = next((m for m in sorted_meetings if m['meeting_date'] == selected_date), None)
+            
+            if selected_meeting:
+                st.markdown(f"#### Análise da Reunião de {selected_date}")
+                st.metric("Decisão de Juros Tomada", selected_meeting.get("decision", "N/A"))
+                
+                # Análise de Discurso
+                h_score = selected_meeting["analysis"]["hawkish"]
+                d_score = selected_meeting["analysis"]["dovish"]
+                balance = h_score - d_score
+                final_tone = "Hawkish 🦅" if balance > 0 else "Dovish 🕊️" if balance < 0 else "Neutro 😐"
+                
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Placar Hawkish", h_score)
+                col2.metric("Placar Dovish", d_score)
+                col3.metric("Tom Predominante", final_tone)
+                
+                # Download da Ata e Texto
+                if selected_meeting.get("pdf_path") and os.path.exists(selected_meeting["pdf_path"]):
+                    with open(selected_meeting["pdf_path"], "rb") as pdf_file:
+                        st.download_button("Baixar Ata em PDF", data=pdf_file, file_name=os.path.basename(selected_meeting["pdf_path"]))
+                
+                with st.expander("Ver texto completo da ata"):
+                    st.text(selected_meeting.get("minutes_text", "Texto não disponível."))
 
-        # Seção de Balanço e Agregados
-        st.markdown("##### Balanço do Fed e Agregados Monetários")
-        col1, col2 = st.columns(2)
-        with col1:
-            plot_indicator_with_analysis("WALCL", "Ativos Totais no Balanço do Fed", "Mede o tamanho do balanço do Fed. Aumentos (Quantitative Easing) indicam política monetária expansionista; reduções (Quantitative Tightening) indicam política contracionista.", unit="$ Trilhões")
-        with col2:
-            plot_indicator_with_analysis("M2SL", "Agregado Monetário M2", "Mede a quantidade total de 'dinheiro' na economia. Sua variação anual pode ser um indicador antecedente de inflação.", unit="Var. Anual %", is_pct_change=True)
-        st.divider()
+        # --- MODO EDITOR (VISÍVEL APENAS PARA ANALISTAS) ---
+        if st.session_state.get("role") == "Analista":
+            st.divider()
+            st.markdown("---")
+            st.header("📝 Modo Editor - Reuniões do FOMC")
 
-        # Seção de Contexto Fiscal e Análise de Discurso
-        st.markdown("##### Contexto Fiscal e Comunicação")
-        col3, col4 = st.columns(2)
-        with col3:
-            debt = fetch_fred_series("GFDEBTN", start_date)
-            gdp = fetch_fred_series("GDP", start_date)
-            if not debt.empty and not gdp.empty:
-                gdp = gdp.resample('D').ffill()
-                debt_to_gdp = (debt / (gdp * 1_000_000_000)).dropna() * 100
-                fig_debt = px.area(debt_to_gdp, title="Dívida Pública / PIB (%)")
-                fig_debt.update_layout(showlegend=False, yaxis_title="%")
-                st.plotly_chart(fig_debt, use_container_width=True)
-                st.caption("Mede a alavancagem do governo. Níveis elevados podem pressionar os juros de longo prazo e a inflação futura.")
-    
-        with col4:
-            st.markdown("**Análise do Discurso (Ata do FOMC)**")
-            fomc_text = st.text_area("Cole aqui o texto da ata do FOMC:", height=150, key="fomc_text_final")
-            if st.button("Analisar Discurso do FOMC", key="fomc_btn_final"):
-                if fomc_text.strip():
-                    h,d = analyze_central_bank_discourse(fomc_text, lang='en')
-                    c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅", h); c2.metric("Placar Dovish 🕊️",d)
-                    bal = "Hawkish" if h>d else "Dovish" if d>h else "Neutro"
-                    c3.metric("Balanço Final", bal)
+            editor_tab1, editor_tab2 = st.tabs(["Adicionar Nova Reunião", "Gerenciar Reuniões Existentes"])
+            
+            with editor_tab1:
+                with st.form("new_meeting_form"):
+                    st.markdown("##### Adicionar Registro de Nova Reunião")
+                    m_date = st.date_input("Data da Reunião")
+                    m_decision = st.text_input("Decisão de Juros (ex: Manteve em 5.25%-5.50%)")
+                    m_text = st.text_area("Cole aqui o texto completo da ata:", height=250)
+                    m_pdf = st.file_uploader("Anexar arquivo da ata em PDF")
+                    
+                    if st.form_submit_button("Salvar Nova Reunião"):
+                        if m_text and m_decision:
+                            h, d = analyze_central_bank_discourse(m_text, lang='en')
+                            new_meeting = {
+                                "meeting_date": m_date.strftime("%Y-%m-%d"),
+                                "decision": m_decision,
+                                "minutes_text": m_text,
+                                "pdf_path": "",
+                                "analysis": {"hawkish": h, "dovish": d}
+                            }
+                            if m_pdf is not None:
+                                if not os.path.exists(REPORTS_DIR): os.makedirs(REPORTS_DIR)
+                                file_path = os.path.join(REPORTS_DIR, m_pdf.name)
+                                with open(file_path, "wb") as f: f.write(m_pdf.getbuffer())
+                                new_meeting["pdf_path"] = file_path
+                            
+                            st.session_state.fomc_meetings.append(new_meeting)
+                            save_json_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
+                            st.success("Nova reunião salva com sucesso!"); st.rerun()
+                        else:
+                            st.error("Data, Decisão e Texto da Ata são campos obrigatórios.")
+
+            with editor_tab2:
+                st.markdown("##### Excluir um Registro de Reunião")
+                if not st.session_state.fomc_meetings:
+                    st.info("Nenhuma reunião para gerenciar.")
+                else:
+                    sorted_meetings_delete = sorted(st.session_state.fomc_meetings, key=lambda x: x['meeting_date'], reverse=True)
+                    for i, meeting in enumerate(sorted_meetings_delete):
+                        st.markdown(f"**Reunião de {meeting['meeting_date']}**")
+                        if st.button("Excluir este registro", key=f"delete_{meeting['meeting_date']}"):
+                            # Encontra e remove o item da lista principal
+                            st.session_state.fomc_meetings = [m for m in st.session_state.fomc_meetings if m['meeting_date'] != meeting['meeting_date']]
+                            save_json_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
+                            st.success("Registro excluído!"); st.rerun()
+                        st.divider()
 
 # --- ABA MERCADOS GLOBAIS ---
 with tab_global:
