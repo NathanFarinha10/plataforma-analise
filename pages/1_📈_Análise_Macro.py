@@ -94,38 +94,50 @@ def plot_indicator(data, title, y_label="Valor"):
     fig.update_layout(showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
-def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start_date="2005-01-01", hline=None):
+# SUBSTITUA A FUNÇÃO ANTIGA POR ESTA VERSÃO CORRETA
+
+def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start_date="2005-01-01", is_pct_change=False, hline=None):
     """
-    Busca um indicador do FRED, plota sua variação anual e exibe uma caixa de análise
-    com último valor, variação mensal (MoM) e anual (YoY).
+    Busca um indicador do FRED, plota o gráfico e exibe uma caixa de análise ao lado
+    com explicação, último valor e variações.
     """
     data = fetch_fred_series(code, start_date).dropna()
     if data.empty:
-        st.warning(f"Não foi possível carregar os dados para {title}."); return
+        st.warning(f"Não foi possível carregar os dados para {title}.")
+        return
 
-    # Calcula as variações percentuais para as métricas
-    yoy_change = (data.pct_change(12).dropna()) * 100
-    mom_change = (data.pct_change(1).dropna()) * 100
+    # A lógica principal do gráfico: mostra a variação anual se solicitado, senão mostra a série original.
+    data_to_plot = data.pct_change(12).dropna() * 100 if is_pct_change else data
 
-    if yoy_change.empty or mom_change.empty:
-        st.warning(f"Dados insuficientes para calcular as variações de {title}."); return
+    if data_to_plot.empty:
+        st.warning(f"Dados insuficientes para calcular a variação de {title}.")
+        return
 
-    latest_yoy = yoy_change.iloc[-1]
-    latest_mom = mom_change.iloc[-1]
+    # Cálculos para as métricas
+    latest_value = data_to_plot.iloc[-1]
+    prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
     
     col1, col2 = st.columns([3, 1])
     with col1:
-        # O gráfico principal mostra a variação anual (YoY), que é o mais comum
-        fig = px.area(yoy_change, title=title)
-        fig.update_layout(showlegend=False, yaxis_title="Variação Anual %", xaxis_title="Data")
+        fig = px.area(data_to_plot, title=title)
+        fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data")
         if hline is not None:
             fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
         st.plotly_chart(fig, use_container_width=True)
     with col2:
-        st.markdown(f"**Análise do Indicador**"); st.caption(explanation)
-        st.metric(label="Variação Anual (YoY)", value=f"{latest_yoy:.2f}%")
-        st.metric(label="Variação Mensal (MoM)", value=f"{latest_mom:.2f}%", delta=f"{latest_mom:.2f}%")
-        st.metric(label=f"Último Valor ({unit})", value=f"{data.iloc[-1]:,.2f}")
+        st.markdown(f"**Análise do Indicador**")
+        st.caption(explanation)
+        # Exibe o valor da série principal (seja ela o índice ou a variação %)
+        st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
+        
+        # Se for um gráfico de variação, também mostramos a variação do mês
+        if is_pct_change and prev_month_value is not None:
+            change_mom = latest_value - prev_month_value
+            st.metric(label="Variação Mensal (p.p.)", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
+        # Se for um gráfico da série original, mostramos a variação absoluta
+        elif not is_pct_change and prev_month_value is not None:
+            change_mom = latest_value - prev_month_value
+            st.metric(label="Variação Mensal (Absoluta)", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
 
 def analyze_central_bank_discourse(text, lang='pt'):
     text = text.lower(); text = re.sub(r'\d+', '', text)
