@@ -276,43 +276,16 @@ with tab_us:
     with subtab_us_activity:
         st.subheader("Indicadores de Atividade, Produção e Consumo")
         st.divider()
-
-
-        plot_indicator_with_analysis(
-            code="INDPRO", title="Produção Industrial",
-            explanation="Mede a produção total das fábricas, minas e serviços de utilidade pública. Um forte indicador da saúde do setor secundário da economia.",
-            unit="Var. Anual %", is_pct_change=True
-        )
+        # --- CORREÇÃO: ADICIONADO 'source=fred' ---
+        plot_indicator_with_analysis('fred', "INDPRO", "Produção Industrial", "Mede a produção total das fábricas, minas e serviços de utilidade pública.", "Var. Anual %", is_pct_change=True)
         st.divider()
-        plot_indicator_with_analysis(
-            code="RSXFS", title="Vendas no Varejo (Ex-Alimentação)",
-            explanation="Mede o total de vendas de bens no varejo, excluindo serviços de alimentação. É um indicador chave da força do consumo das famílias.",
-            unit="Var. Anual %", is_pct_change=True
-        )
+        plot_indicator_with_analysis('fred', "RSXFS", "Vendas no Varejo (Ex-Alimentação)", "Mede o total de vendas de bens no varejo. É um indicador chave da força do consumo das famílias.", "Var. Anual %", is_pct_change=True)
         st.divider()
-        plot_indicator_with_analysis(
-            code="PCEC96", title="Consumo Pessoal (PCE Real)",
-            explanation="Mede os gastos totais dos consumidores em bens e serviços, ajustado pela inflação. É o principal componente do PIB e reflete a demanda agregada.",
-            unit="Var. Anual %", is_pct_change=True
-        )
+        plot_indicator_with_analysis('fred', "PCEC96", "Consumo Pessoal (PCE Real)", "Mede os gastos totais dos consumidores, ajustado pela inflação. É o principal componente do PIB.", "Var. Anual %", is_pct_change=True)
         st.divider()
-        plot_indicator_with_analysis(
-            code="AMTMNO", title="Novas Ordens à Manufatura",
-            explanation="Mede o valor em dólares de novos pedidos feitos à indústria. É um indicador antecedente, pois sinaliza a produção futura.",
-            unit="Var. Anual %", is_pct_change=True
-        )
+        plot_indicator_with_analysis('fred', "AMTMNO", "Novas Ordens à Manufatura", "Mede o valor de novos pedidos feitos à indústria. É um indicador antecedente, pois sinaliza a produção futura.", "Var. Anual %", is_pct_change=True)
         st.divider()
-        plot_indicator_with_analysis(
-            code="MANEMP", title="Emprego na Manufatura",
-            explanation="Mede o número de trabalhadores empregados no setor industrial. Sua tendência ajuda a avaliar a saúde do mercado de trabalho e da indústria.",
-            unit="Milhares"
-        )
-        st.divider()
-        plot_indicator_with_analysis(
-            code="UMCSENT", title="Sentimento do Consumidor (Univ. Michigan)",
-            explanation="Mede a confiança dos consumidores em relação à economia e suas finanças pessoais. Um sentimento alto geralmente precede maiores gastos.",
-            unit="Índice"
-        )
+        plot_indicator_with_analysis('fred', "UMCSENT", "Sentimento do Consumidor (Univ. Michigan)", "Mede a confiança dos consumidores. Um sentimento alto geralmente precede maiores gastos.", "Índice")
 
 
     with subtab_us_jobs:
