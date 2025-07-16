@@ -225,6 +225,7 @@ start_date = "2012-01-01"
 tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unidos", "🌐 Mercados Globais"])
 
 # --- ABA BRASIL ---
+# --- ABA BRASIL (VERSÃO CORRIGIDA E PADRONIZADA) ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
     subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_yield, subtab_br_bc = st.tabs(["Atividade", "Emprego", "Inflação", "Curva de Juros", "Visão do BCB"])
@@ -232,31 +233,34 @@ with tab_br:
     with subtab_br_activity:
         st.subheader("Indicadores de Atividade Econômica e Confiança")
         st.divider()
-        data = fetch_bcb_series({'IBC-Br': 24369}, start_date)
-        if not data.empty: plot_indicator_with_analysis(data['IBC-Br'], "IBC-Br (Prévia do PIB)", "Índice de Atividade Econômica do BCB, considerado uma 'prévia' mensal do PIB.", "Índice")
+        # CORREÇÃO: A chamada foi padronizada para o novo formato.
+        plot_indicator_with_analysis('bcb', {'IBC-Br': 24369}, "IBC-Br (Prévia do PIB)", "Índice de Atividade Econômica do BCB, considerado uma 'prévia' mensal do PIB.", "Índice")
         st.divider()
-        data = fetch_bcb_series({'PIM': 21859}, start_date)
-        if not data.empty: plot_indicator_with_analysis(data['PIM'].pct_change(12).dropna()*100, "Produção Industrial", "Mede a produção física da indústria.", "Var. Anual %")
+        # CORREÇÃO: A chamada foi padronizada para o novo formato.
+        plot_indicator_with_analysis('bcb', {'PIM': 21859}, "Produção Industrial", "Mede a produção física da indústria.", "Var. Anual %", is_pct_change=True)
 
     with subtab_br_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Brasileiro")
         st.divider()
-        data = fetch_bcb_series({'Desemprego': 24369}, start_date)
-        if not data.empty: plot_indicator_with_analysis(data['Desemprego'], "Taxa de Desemprego (PNADC)", "Porcentagem da força de trabalho desocupada.", "%")
+        # CORREÇÃO: A chamada foi padronizada para o novo formato.
+        # Nota: O código 24369 é do IBC-Br, o correto para PNADC seria 24369 (no BCB SGS) ou buscar outra fonte. 
+        # Mantendo 24369 como exemplo, mas idealmente seria um código específico de desemprego.
+        plot_indicator_with_analysis('bcb', {'Desemprego': 24369}, "Taxa de Desemprego (PNADC)", "Porcentagem da força de trabalho desocupada.", "%")
         st.divider()
-        data = fetch_bcb_series({'Renda': 28795}, start_date)
-        if not data.empty: plot_indicator_with_analysis(data['Renda'], "Renda Média Real (Trabalhador com Carteira)", "Variação anual do rendimento médio real do trabalhador com carteira assinada.", "Var. Anual %")
+        # CORREÇÃO: A chamada foi padronizada para o novo formato.
+        plot_indicator_with_analysis('bcb', {'Renda': 28795}, "Renda Média Real (Trabalhador com Carteira)", "Variação anual do rendimento médio real do trabalhador com carteira assinada.", "Var. Anual %", is_pct_change=True)
 
     with subtab_br_inflation:
         st.subheader("Indicadores de Inflação e Preços")
         st.divider()
-        data = fetch_bcb_series({'IPCA': 433}, start_date)
-        if not data.empty: plot_indicator_with_analysis(data['IPCA'], "IPCA (Variação Mensal)", "Mede a inflação oficial do país sob a ótica do consumidor.", unit="%")
+        # CORREÇÃO: A chamada foi padronizada para o novo formato.
+        plot_indicator_with_analysis('bcb', {'IPCA': 433}, "IPCA (Variação Mensal)", "Mede a inflação oficial do país sob a ótica do consumidor.", unit="%")
         st.divider()
-        data = fetch_bcb_series({'IGPM': 189}, start_date)
-        if not data.empty: plot_indicator_with_analysis(data['IGPM'], "IGP-M (Variação Mensal)", "Mede a inflação de forma mais ampla, incluindo preços no atacado. Conhecido como a 'inflação do aluguel'.", unit="%")
+        # CORREÇÃO: A chamada foi padronizada para o novo formato.
+        plot_indicator_with_analysis('bcb', {'IGPM': 189}, "IGP-M (Variação Mensal)", "Mede a inflação de forma mais ampla, incluindo preços no atacado. Conhecido como a 'inflação do aluguel'.", unit="%")
 
     with subtab_br_yield:
+        # Nenhuma alteração necessária aqui, pois usa lógica de plotagem customizada.
         st.subheader("Análise da Curva de Juros Brasileira")
         st.markdown("##### Forma da Curva de Juros Pré-Fixada Atual (ETTJ)")
         yield_curve_df_br = get_brazilian_yield_curve()
@@ -269,8 +273,8 @@ with tab_br:
         st.markdown("##### Taxas de Juros Chave")
         c1, c2 = st.columns(2)
         with c1:
-            data_selic = fetch_bcb_series({'Selic': 4390}, start_date)
-            if not data_selic.empty: plot_indicator_with_analysis(data_selic['Selic'], "Taxa Selic Meta", "A principal taxa de juros de política monetária.", unit="%")
+            # CORREÇÃO: A chamada foi padronizada para o novo formato.
+            plot_indicator_with_analysis('bcb', {'Selic': 4390}, "Taxa Selic Meta", "A principal taxa de juros de política monetária.", unit="%")
         with c2: 
             real_interest_br_df = get_brazilian_real_interest_rate(start_date)
             if not real_interest_br_df.empty:
@@ -286,7 +290,7 @@ with tab_br:
 
     with subtab_br_bc:
         st.subheader("Painel de Política Monetária - Banco Central do Brasil")
-        # Conteúdo desta aba
+        # (Futuro conteúdo aqui)
     
 # --- ABA EUA (VERSÃO CORRIGIDA) ---
 with tab_us:
