@@ -114,7 +114,6 @@ def plot_indicator_with_analysis(code, title, explanation, unit="", start_date="
             change_mom = latest_value - prev_month_value
             st.metric(label="Variação Mensal", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
 
-
 def analyze_central_bank_discourse(text, lang='pt'):
     text = text.lower(); text = re.sub(r'\d+', '', text)
     if lang == 'pt':
