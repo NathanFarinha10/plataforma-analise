@@ -13,7 +13,7 @@ import os
 import json
 
 # --- Configuração da Página ---
-st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="PAG | Macro Hub", page_icon="🌍", layout="wide")
 
 # --- NOME DOS ARQUIVOS DE DADOS ---
 RECOMMENDATIONS_FILE = "recommendations.csv"
@@ -272,10 +272,10 @@ def get_brazilian_real_interest_rate(start_date):
     except: return pd.DataFrame()
 
 # --- UI DA APLICAÇÃO ---
-st.title("🌍 Painel de Análise Macroeconômica")
+st.title("Macro Hub")
 start_date = "2012-01-01"
 
-tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unidos", "🌐 Mercados Globais"])
+tab_br, tab_us, tab_global = st.tabs(["Brasil", "Estados Unidos", "Mercados Globais"])
 
 # --- ABA BRASIL ---
 # --- ABA BRASIL (VERSÃO CORRIGIDA E PADRONIZADA) ---
