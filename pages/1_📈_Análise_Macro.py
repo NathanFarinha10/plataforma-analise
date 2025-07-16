@@ -42,6 +42,8 @@ def save_data(data, file_path):
     elif isinstance(data, list):
         with open(file_path, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, indent=4)
 
+recommendations_df = load_data(RECOMMENDATIONS_FILE)
+
 if 'recs_df' not in st.session_state: st.session_state.recs_df = load_data(RECOMMENDATIONS_FILE)
 if 'fomc_meetings' not in st.session_state: st.session_state.fomc_meetings = load_data(FOMC_MEETINGS_FILE)
 if 'manager_views' not in st.session_state: st.session_state.manager_views = load_data(MANAGER_VIEWS_FILE)
