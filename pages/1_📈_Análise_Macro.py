@@ -157,6 +157,21 @@ with tab_us:
         if not s10a.empty and not s2a.empty:
             spread = (s10a - s2a).dropna()
             fig = px.area(spread, title="Spread 10A - 2A"); fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
+    with subtab_us_real_estate:
+        st.subheader("Indicadores do Mercado Imobiliário Americano")
+        st.caption("O setor imobiliário é um dos principais motores do ciclo econômico dos EUA.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            plot_indicator(fetch_fred_series("MORTGAGE30US", start_date), "Taxa de Financiamento Imobiliário 30 Anos", "Taxa %")
+            plot_indicator(fetch_fred_series("PERMIT", start_date), "Permissões de Construção (Milhares de Unidades)")
+            plot_indicator(fetch_fred_series("NHFSEPUCS", start_date), "Casas em Construção (Milhares de Unidades)")
+        with col2:
+            plot_indicator(fetch_fred_series("CSUSHPISA", start_date), "S&P/Case-Shiller U.S. National Home Price Index")
+            plot_indicator(fetch_fred_series("HOUST", start_date), "Novas Casas Iniciadas (Milhares de Unidades)")
+            plot_indicator(fetch_fred_series("HSN1F", start_date), "Casas Novas Vendidas (Milhares de Unidades)")
+        
+        plot_indicator(fetch_fred_series("EXHOSLUSM495S", start_date), "Casas Existentes à Venda (Milhares de Unidades)")
     with subtab_us_bc:
         st.subheader("Indicadores Monetários (Fed)")
         plot_indicator(fetch_fred_series("M2SL", start_date).pct_change(12).dropna()*100, "M2 (Var. Anual %)")
