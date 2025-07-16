@@ -183,7 +183,7 @@ with tab_br:
 # --- ABA EUA ---
 with tab_us:
     st.header("Principais Indicadores dos Estados Unidos")
-    subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_real_estate, subtab_us_bc = st.tabs(["Atividade", "Inflação", "Curva de Juros", "Mercado Imobiliário", "Visão do Fed"])
+    subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_yield, subtab_us_real_estate, subtab_us_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Curva de Juros", "Mercado Imobiliário", "Visão do Fed"])
     
     with subtab_us_activity:
         st.subheader("Indicadores de Atividade, Produção e Consumo")
@@ -226,6 +226,35 @@ with tab_us:
             unit="Índice"
         )
 
+
+    with subtab_us_jobs:
+        st.subheader("Indicadores do Mercado de Trabalho Americano")
+        st.caption("A força do mercado de trabalho é um dos principais mandatos do Federal Reserve e um motor para o consumo.")
+        st.divider()
+
+        plot_indicator_with_analysis(
+            code="UNRATE", title="Taxa de Desemprego",
+            explanation="A porcentagem da força de trabalho que está desempregada, mas procurando por emprego. É o principal indicador da saúde do mercado de trabalho.",
+            unit="%"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="PAYEMS", title="Criação de Vagas (Nonfarm Payrolls)",
+            explanation="Mede o número de novos empregos criados a cada mês, excluindo o setor agrícola. O dado mais importante para o mercado financeiro.",
+            unit="Milhares"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="JTSJOL", title="Vagas em Aberto (JOLTS)",
+            explanation="Mede o total de vagas de emprego não preenchidas. Uma proporção alta de vagas por desempregado indica um mercado de trabalho muito aquecido.",
+            unit="Milhares"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="CES0500000003", title="Crescimento dos Salários (Average Hourly Earnings)",
+            explanation="Mede a variação anual do salário médio por hora. É um indicador crucial para a inflação, pois salários mais altos podem levar a um aumento no consumo e nos preços.",
+            unit="Var. Anual %", is_pct_change=True
+        )
     
     with subtab_us_inflation:
         st.subheader("Inflação e Juros")
