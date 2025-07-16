@@ -944,56 +944,56 @@ with tab_global:
     st.header("Índices e Indicadores de Mercado Global")
     subtab_equity, subtab_commodities, subtab_risk, subtab_valuation, subtab_big_players = st.tabs(["Ações", "Commodities", "Risco", "Valuation", "Visão dos Big Players"])
     with subtab_equity:
-    st.subheader("Análise de Performance de Índices Globais")
-    tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Nasdaq": "^IXIC", "DAX (Alemanha)": "^GDAXI", "Nikkei (Japão)": "^N225"}
-    
-    # --- SEÇÃO 1: GRÁFICO DE PERFORMANCE ---
-    sel = st.multiselect("Selecione os índices:", options=list(tickers.keys()), default=["S&P 500", "Ibovespa"])
-    
-    if sel:
-        selected_tickers_map = {name: code for name, code in tickers.items() if name in sel}
-        data = fetch_market_data(list(selected_tickers_map.values()))
+        st.subheader("Análise de Performance de Índices Globais")
+        tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Nasdaq": "^IXIC", "DAX (Alemanha)": "^GDAXI", "Nikkei (Japão)": "^N225"}
         
-        if not data.empty:
-            # Renomeia as colunas de volta para os nomes amigáveis
-            data.rename(columns={code: name for name, code in selected_tickers_map.items()}, inplace=True)
+        # --- SEÇÃO 1: GRÁFICO DE PERFORMANCE ---
+        sel = st.multiselect("Selecione os índices:", options=list(tickers.keys()), default=["S&P 500", "Ibovespa"])
+        
+        if sel:
+            selected_tickers_map = {name: code for name, code in tickers.items() if name in sel}
+            data = fetch_market_data(list(selected_tickers_map.values()))
             
-            st.markdown("##### Performance Normalizada (Base 100)")
-            st.plotly_chart(px.line((data / data.dropna().iloc[0]) * 100, title="Performance Relativa dos Índices"), use_container_width=True)
-            
-            # --- SEÇÃO 2: TABELA DE MÉTRICAS DE PERFORMANCE ---
-            st.markdown("##### Métricas de Performance e Risco")
-            st.dataframe(calculate_performance_metrics(data), use_container_width=True)
-            st.divider()
-
-            # --- SEÇÃO 3: ANÁLISE DE RISCO (VOLATILIDADE MÓVEL) ---
-            st.markdown("##### Volatilidade Móvel (60 dias)")
-            st.caption("A volatilidade móvel mostra a evolução do risco (desvio-padrão dos retornos) ao longo do tempo.")
-            rolling_vol = data.pct_change().rolling(window=60).std() * np.sqrt(252)
-            st.plotly_chart(px.line(rolling_vol, title="Volatilidade Anualizada Móvel (60d)"), use_container_width=True)
-            st.divider()
-
-    # --- SEÇÃO 4: ANÁLISE DE VALUATION ---
-    st.markdown("##### Análise de Valuation (P/L do S&P 500)")
-    # FRED: MULTPL/SP500_PE_RATIO_MONTH
-    plot_indicator_with_analysis(
-        'fred', "MULTPL/SP500_PE_RATIO_MONTH",
-        "Índice Preço/Lucro (P/L) do S&P 500",
-        "Mede quantas vezes o preço do índice negocia em relação ao lucro das empresas. Usado para avaliar se o mercado está 'caro' ou 'barato' frente à sua história.",
-        unit="Ratio"
-    )
-    st.divider()
-
-    # --- SEÇÃO 5: ANÁLISE DE ESTILO/FATOR ---
-    st.markdown("##### Análise de Estilo: Growth vs. Value")
-    factor_tickers = {"Growth (Crescimento)": "VUG", "Value (Valor)": "VTV"}
-    factor_data = fetch_market_data(list(factor_tickers.values()))
-    if not factor_data.empty:
-        factor_data.rename(columns={code: name for name, code in factor_tickers.items()}, inplace=True)
-        # Ratio de performance
-        factor_ratio = (factor_data["Growth (Crescimento)"] / factor_data["Value (Valor)"]).dropna()
-        st.plotly_chart(px.line(factor_ratio, title="Ratio de Performance: Growth vs. Value"), use_container_width=True)
-        st.caption("Um ratio crescente indica que ações de 'Growth' estão performando melhor que ações de 'Value'.")
+            if not data.empty:
+                # Renomeia as colunas de volta para os nomes amigáveis
+                data.rename(columns={code: name for name, code in selected_tickers_map.items()}, inplace=True)
+                
+                st.markdown("##### Performance Normalizada (Base 100)")
+                st.plotly_chart(px.line((data / data.dropna().iloc[0]) * 100, title="Performance Relativa dos Índices"), use_container_width=True)
+                
+                # --- SEÇÃO 2: TABELA DE MÉTRICAS DE PERFORMANCE ---
+                st.markdown("##### Métricas de Performance e Risco")
+                st.dataframe(calculate_performance_metrics(data), use_container_width=True)
+                st.divider()
+    
+                # --- SEÇÃO 3: ANÁLISE DE RISCO (VOLATILIDADE MÓVEL) ---
+                st.markdown("##### Volatilidade Móvel (60 dias)")
+                st.caption("A volatilidade móvel mostra a evolução do risco (desvio-padrão dos retornos) ao longo do tempo.")
+                rolling_vol = data.pct_change().rolling(window=60).std() * np.sqrt(252)
+                st.plotly_chart(px.line(rolling_vol, title="Volatilidade Anualizada Móvel (60d)"), use_container_width=True)
+                st.divider()
+    
+        # --- SEÇÃO 4: ANÁLISE DE VALUATION ---
+        st.markdown("##### Análise de Valuation (P/L do S&P 500)")
+        # FRED: MULTPL/SP500_PE_RATIO_MONTH
+        plot_indicator_with_analysis(
+            'fred', "MULTPL/SP500_PE_RATIO_MONTH",
+            "Índice Preço/Lucro (P/L) do S&P 500",
+            "Mede quantas vezes o preço do índice negocia em relação ao lucro das empresas. Usado para avaliar se o mercado está 'caro' ou 'barato' frente à sua história.",
+            unit="Ratio"
+        )
+        st.divider()
+    
+        # --- SEÇÃO 5: ANÁLISE DE ESTILO/FATOR ---
+        st.markdown("##### Análise de Estilo: Growth vs. Value")
+        factor_tickers = {"Growth (Crescimento)": "VUG", "Value (Valor)": "VTV"}
+        factor_data = fetch_market_data(list(factor_tickers.values()))
+        if not factor_data.empty:
+            factor_data.rename(columns={code: name for name, code in factor_tickers.items()}, inplace=True)
+            # Ratio de performance
+            factor_ratio = (factor_data["Growth (Crescimento)"] / factor_data["Value (Valor)"]).dropna()
+            st.plotly_chart(px.line(factor_ratio, title="Ratio de Performance: Growth vs. Value"), use_container_width=True)
+            st.caption("Um ratio crescente indica que ações de 'Growth' estão performando melhor que ações de 'Value'.")
     with subtab_commodities:
         c1,c2 = st.columns(2)
         comm_tickers = {"Petróleo WTI": "CL=F", "Ouro": "GC=F"}; data = fetch_market_data(list(comm_tickers.values()))
