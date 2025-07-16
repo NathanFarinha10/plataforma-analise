@@ -21,6 +21,8 @@ MANAGER_VIEWS_FILE = "manager_views.json"
 FOMC_MEETINGS_FILE = "fomc_meetings.json"
 REPORTS_DIR = "reports"
 REPORTS_DIR_FOMC = "reports_fomc"
+COPOM_MEETINGS_FILE = "copom_meetings.json"
+REPORTS_DIR_COPOM = "reports_copom"
 
 # --- Verifica se o usuário está logado ---
 if not st.session_state.get("authentication_status"):
@@ -50,7 +52,7 @@ manager_views = load_data(MANAGER_VIEWS_FILE)
 if 'recs_df' not in st.session_state: st.session_state.recs_df = load_data(RECOMMENDATIONS_FILE)
 if 'fomc_meetings' not in st.session_state: st.session_state.fomc_meetings = load_data(FOMC_MEETINGS_FILE)
 if 'manager_views' not in st.session_state: st.session_state.manager_views = load_data(MANAGER_VIEWS_FILE)
-
+if 'copom_meetings' not in st.session_state: st.session_state.copom_meetings = load_data(COPOM_MEETINGS_FILE)
 
 # --- INICIALIZAÇÃO DAS APIS ---
 @st.cache_resource
@@ -405,9 +407,111 @@ with tab_br:
             fig_spread = px.area(spread_br, title="Spread 5 Anos - 2 Anos (Pré)")
             fig_spread.add_hline(y=0, line_dash="dash", line_color="gray"); st.plotly_chart(fig_spread, use_container_width=True)
 
+    # SUBSTITUA TODO O CONTEÚDO DESTA ABA
     with subtab_br_bc:
         st.subheader("Painel de Política Monetária - Banco Central do Brasil")
-        # (Futuro conteúdo aqui)
+        st.caption("Acompanhe os principais indicadores, o balanço e a comunicação do banco central brasileiro.")
+        st.markdown("##### Indicadores Chave da Política Monetária e Fiscal")
+    
+        # --- INDICADORES CHAVE ---
+        col1, col2 = st.columns(2)
+        with col1:
+            # PIB Acumulado 12M - Código SGS BCB: 4380
+            plot_indicator_with_analysis('bcb', {'PIB': 4380}, "PIB Acumulado 12 Meses", "Variação real do Produto Interno Bruto acumulado nos últimos 12 meses.", unit="%", is_pct_change=False)
+            st.divider()
+            # Base Monetária - Código SGS BCB: 13621
+            plot_indicator_with_analysis('bcb', {'Base Monetaria': 13621}, "Base Monetária", "Soma do papel-moeda em poder do público e das reservas bancárias. Reflete a 'impressão de dinheiro' pelo BCB.", unit="R$ Bilhões")
+    
+        with col2:
+            # Dívida Líquida / PIB - Código SGS BCB: 4513
+            plot_indicator_with_analysis('bcb', {'Divida/PIB': 4513}, "Dívida Líquida / PIB", "Principal indicador de saúde fiscal do país. Mede a dívida líquida do setor público como percentual do PIB.", unit="%")
+            st.divider()
+            # M2 - Código SGS BCB: 27841
+            plot_indicator_with_analysis('bcb', {'M2': 27841}, "Agregado Monetário M2", "Medida ampla da oferta de moeda, incluindo papel-moeda, depósitos à vista e depósitos de poupança. Indica a liquidez na economia.", unit="R$ Bilhões")
+        
+        st.divider()
+    
+        # --- ACOMPANHAMENTO DO COPOM (ADAPTADO DO FOMC) ---
+        st.subheader("Acompanhamento Histórico do Discurso do COPOM")
+        
+        meetings = st.session_state.get('copom_meetings', []) # Usar .get para segurança
+        if not meetings:
+            st.info("Nenhum registro de reunião do COPOM foi adicionado ainda.")
+        else:
+            sorted_meetings = sorted(meetings, key=lambda x: x['meeting_date'], reverse=True)
+            meeting_dates = [m['meeting_date'] for m in sorted_meetings]
+            selected_date = st.selectbox("Selecione a data da Reunião do COPOM para analisar:", meeting_dates, key="copom_date_select")
+            
+            selected_meeting = next((m for m in sorted_meetings if m['meeting_date'] == selected_date), None)
+            
+            if selected_meeting:
+                st.metric("Decisão da Taxa Selic", selected_meeting.get("decision", "N/A"))
+                
+                # Análise Hawkish/Dovish
+                h_score = selected_meeting.get("analysis", {}).get("hawkish", 0)
+                d_score = selected_meeting.get("analysis", {}).get("dovish", 0)
+                final_tone = "Hawkish 🦅" if h_score > d_score else "Dovish 🕊️" if d_score > h_score else "Neutro 😐"
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Placar Hawkish", h_score)
+                c2.metric("Placar Dovish", d_score)
+                c3.metric("Tom Predominante", final_tone)
+                
+                # Botão de Download
+                if selected_meeting.get("pdf_path") and os.path.exists(selected_meeting["pdf_path"]):
+                    with open(selected_meeting["pdf_path"], "rb") as pdf_file:
+                        st.download_button("Baixar Ata em PDF", data=pdf_file, file_name=os.path.basename(selected_meeting["pdf_path"]), key=f"download_copom_{selected_date}")
+                
+                with st.expander("Ver texto completo da ata"):
+                    st.text(selected_meeting.get("minutes_text", "Texto não disponível."))
+
+    # --- MODO EDITOR (ADAPTADO PARA O COPOM) ---
+    if st.session_state.get("role") == "Analista":
+        st.divider()
+        st.markdown("---")
+        st.header("📝 Modo Editor - Reuniões do COPOM")
+        
+        editor_tab1, editor_tab2 = st.tabs(["Adicionar Nova Reunião", "Gerenciar Reuniões Existentes"])
+        
+        with editor_tab1:
+            with st.form("new_copom_meeting_form"):
+                st.markdown("##### Adicionar Registro de Nova Reunião do COPOM")
+                m_date = st.date_input("Data da Reunião", key="copom_m_date")
+                m_decision = st.text_input("Decisão da Selic (ex: Manteve em 10,50%)", key="copom_m_decision")
+                m_text = st.text_area("Cole aqui o texto completo da ata:", height=250, key="copom_m_text")
+                m_pdf = st.file_uploader("Anexar arquivo da ata em PDF", key="copom_m_pdf")
+                
+                if st.form_submit_button("Salvar Nova Reunião do COPOM"):
+                    if m_text and m_decision:
+                        # ADAPTADO PARA O BCB: lang='pt'
+                        h, d = analyze_central_bank_discourse(m_text, lang='pt')
+                        new_meeting = {"meeting_date": m_date.strftime("%Y-%m-%d"), "decision": m_decision, "minutes_text": m_text, "pdf_path": "", "analysis": {"hawkish": h, "dovish": d}}
+                        
+                        if m_pdf:
+                            if not os.path.exists(REPORTS_DIR_COPOM): os.makedirs(REPORTS_DIR_COPOM)
+                            file_path = os.path.join(REPORTS_DIR_COPOM, m_pdf.name)
+                            with open(file_path, "wb") as f: f.write(m_pdf.getbuffer())
+                            new_meeting["pdf_path"] = file_path
+                        
+                        st.session_state.copom_meetings.append(new_meeting)
+                        save_data(st.session_state.copom_meetings, COPOM_MEETINGS_FILE)
+                        st.success("Nova reunião do COPOM salva com sucesso!"); st.rerun()
+                    else:
+                        st.error("Data, Decisão e Texto da Ata são campos obrigatórios.")
+
+        with editor_tab2:
+            st.markdown("##### Excluir um Registro de Reunião")
+            if not st.session_state.get('copom_meetings', []):
+                st.info("Nenhuma reunião para gerenciar.")
+            else:
+                sorted_meetings_delete = sorted(st.session_state.copom_meetings, key=lambda x: x['meeting_date'], reverse=True)
+                for i, meeting in enumerate(sorted_meetings_delete):
+                    st.markdown(f"**Reunião de {meeting['meeting_date']}**")
+                    if st.button("Excluir este registro", key=f"delete_copom_{meeting['meeting_date']}"):
+                        st.session_state.copom_meetings = [m for m in st.session_state.copom_meetings if m['meeting_date'] != meeting['meeting_date']]
+                        save_data(st.session_state.copom_meetings, COPOM_MEETINGS_FILE)
+                        st.success("Registro excluído!"); st.rerun()
+                    st.divider()
     
 # --- ABA EUA (VERSÃO CORRIGIDA) ---
 with tab_us:
