@@ -144,20 +144,6 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
 
 # --- ADICIONE ESTAS FUNÇÕES FALTANTES NA SEÇÃO DE FUNÇÕES AUXILIARES ---
 
-# ADICIONE ESTA FUNÇÃO JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
-@st.cache_data(ttl=3600)
-def get_yfinance_valuation(ticker="SPY"):
-    """Busca dados de valuation (P/L) do yfinance para um ticker."""
-    try:
-        info = yf.Ticker(ticker).info
-        # Usamos .get() para evitar erros caso a chave não exista
-        trailing_pe = info.get('trailingPE', 'N/A')
-        forward_pe = info.get('forwardPE', 'N/A')
-        return trailing_pe, forward_pe
-    except Exception:
-        # Se houver qualquer erro na chamada da API, retorna 'N/A'
-        return 'N/A', 'N/A'
-
 @st.cache_data(ttl=3600)
 def get_us_yield_curve_data():
     codes = {
@@ -956,7 +942,7 @@ with tab_us:
 # --- ABA MERCADOS GLOBAIS ---
 with tab_global:
     st.header("Índices e Indicadores de Mercado Global")
-    subtab_equity, subtab_commodities, subtab_risk, subtab_valuation, subtab_big_players = st.tabs(["Ações", "Commodities", "Risco", "Valuation", "Visão dos Big Players"])
+    subtab_equity, subtab_commodities, subtab_risk, subtab_big_players = st.tabs(["Ações", "Commodities", "Risco", "Visão dos Big Players"])
     with subtab_equity:
         st.subheader("Análise de Performance de Índices Globais")
         tickers = {"S&P 500": "^GSPC", "Ibovespa": "^BVSP", "Nasdaq": "^IXIC", "DAX (Alemanha)": "^GDAXI", "Nikkei (Japão)": "^N225"}
@@ -987,38 +973,15 @@ with tab_global:
                 st.plotly_chart(px.line(rolling_vol, title="Volatilidade Anualizada Móvel (60d)"), use_container_width=True)
                 st.divider()
     
+        # A SEÇÃO DE VALUATION FOI REMOVIDA
         
-        # --- SEÇÃO 4: ANÁLISE DE VALUATION (SNAPSHOT VIA YFINANCE) ---
-        st.markdown("##### Análise de Valuation (Snapshot S&P 500 via SPY)")
-        st.caption("Exibe o valuation atual do S&P 500, utilizando o ETF SPY como proxy. Fonte: Yahoo Finance.")
-        
-        # Busca os dados de valuation usando a nova função
-        trailing_pe, forward_pe = get_yfinance_valuation("SPY")
-        
-        col_val1, col_val2 = st.columns(2)
-        with col_val1:
-            st.metric(
-                label="P/L Trailing (Últimos 12M)",
-                value=f"{trailing_pe:.2f}" if isinstance(trailing_pe, (int, float)) else str(trailing_pe)
-            )
-            # GARANTA QUE SEU CÓDIGO ESTEJA ASSIM (COM O TEXTO ENTRE ASPAS):
-            st.help("Preço da ação dividido pelo lucro por ação dos últimos 12 meses. Mostra o quanto o mercado está pagando pelo lucro passado.")
-            
-        with col_val2:
-            st.metric(
-                label="P/L Forward (Projetado 12M)",
-                value=f"{forward_pe:.2f}" if isinstance(forward_pe, (int, float)) else str(forward_pe)
-            )
-            # GARANTA QUE SEU CÓDIGO ESTEJA ASSIM (COM O TEXTO ENTRE ASPAS):
-            st.help("Preço da ação dividido pelo lucro projetado para os próximos 12 meses. Mostra a expectativa do mercado sobre os lucros futuros.")
-        st.divider()
-    
-        # --- SEÇÃO 5: ANÁLISE DE ESTILO/FATOR ---
+        # --- SEÇÃO DE ANÁLISE DE ESTILO/FATOR ---
         st.markdown("##### Análise de Estilo: Growth vs. Value")
         factor_tickers = {"Growth (Crescimento)": "VUG", "Value (Valor)": "VTV"}
         factor_data = fetch_market_data(list(factor_tickers.values()))
         if not factor_data.empty:
             factor_data.rename(columns={code: name for name, code in factor_tickers.items()}, inplace=True)
+            # Ratio de performance
             factor_ratio = (factor_data["Growth (Crescimento)"] / factor_data["Value (Valor)"]).dropna()
             st.plotly_chart(px.line(factor_ratio, title="Ratio de Performance: Growth vs. Value"), use_container_width=True)
             st.caption("Um ratio crescente indica que ações de 'Growth' estão performando melhor que ações de 'Value'.")
