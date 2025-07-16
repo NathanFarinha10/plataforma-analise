@@ -108,6 +108,18 @@ def get_brazilian_yield_curve():
         return df.sort_values('Prazo')
     return df
 
+@st.cache_data(ttl=3600)
+def get_brazilian_real_interest_rate(start_date):
+    try:
+        selic = fetch_bcb_series({'selic': 432}, start_date)
+        ipca = fetch_bcb_series({'ipca': 13522}, start_date)
+        if selic.empty or ipca.empty: return pd.DataFrame()
+        df = selic.resample('M').mean().join(ipca.resample('M').last()).dropna()
+        df['Juro Real (aa)'] = (((1 + df['selic']/100) / (1 + df['ipca']/100)) - 1) * 100
+        return df[['Juro Real (aa)']]
+    except: return pd.DataFrame()
+
+
 # --- UI DA APLICAÇÃO ---
 st.title("🌍 Painel de Análise Macroeconômica")
 start_date = "2012-01-01"
