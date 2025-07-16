@@ -214,7 +214,7 @@ tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unido
 # --- ABA BRASIL ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
-    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Visão do BCB"])
+    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_yield, subtab_br_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Curva de Juros", "Visão do BCB"])
     
     with subtab_br_activity:
         st.subheader("Indicadores de Atividade Econômica e Confiança")
@@ -284,6 +284,51 @@ with tab_br:
         plot_indicator_with_analysis('bcb', 189, "IGP-M (Variação Mensal)",
             "Mede a inflação de forma mais ampla, incluindo preços no atacado e na construção. Conhecido como a 'inflação do aluguel'.", unit="%"
         )
+
+    with subtab_br_yield:
+        st.subheader("Análise da Curva de Juros Brasileira")
+        st.caption("Acompanhe a taxa básica de juros, o juro real e a inclinação da curva de juros pré-fixada.")
+        st.divider()
+
+        # 1. Gráfico da Curva de Juros Completa
+        st.markdown("##### Forma da Curva de Juros Pré-Fixada Atual (ETTJ)")
+        yield_curve_df_br = get_brazilian_yield_curve() # Reutiliza a função que já criamos
+        if not yield_curve_df_br.empty:
+            fig_curve = px.line(yield_curve_df_br, x='Prazo', y='Taxa (%)', title="Curva de Juros Pré-Fixada (Fonte: B3/Anbima)", markers=True)
+            fig_curve.update_layout(xaxis_title="Vencimento do Título", yaxis_title="Taxa de Juros Anual (%)")
+            st.plotly_chart(fig_curve, use_container_width=True)
+        else:
+            st.warning("Não foi possível carregar os dados para a forma da curva de juros brasileira.")
+        
+        st.divider()
+        
+        # 2. Taxa Selic e Juro Real
+        st.markdown("##### Taxas de Juros Chave")
+        col1, col2 = st.columns(2)
+        with col1:
+            plot_indicator_with_analysis('bcb', 432, "Taxa Selic Meta (Anualizada)",
+                "A principal taxa de juros de política monetária, definida pelo Copom para controlar a inflação.", unit="%", start_date=start_date)
+        with col2:
+            real_interest_br_df = get_brazilian_real_interest_rate(start_date)
+            if not real_interest_br_df.empty:
+                fig = px.area(real_interest_br_df, title="Taxa de Juro Real (Ex-Post)")
+                fig.add_hline(y=0, line_dash="dash", line_color="red")
+                fig.update_layout(showlegend=False, yaxis_title="Taxa Real de Juros Anual (%)")
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("Calculado como a Taxa Selic anualizada subtraída da inflação (IPCA) acumulada em 12 meses.")
+        
+        st.divider()
+        
+        # 3. Spread da Curva
+        st.markdown("##### Spread da Curva de Juros (5 Anos - 2 Anos)")
+        juro_5a = fetch_bcb_series(12473, start_date) # ETTJ Pré 5a
+        juro_2a = fetch_bcb_series(12470, start_date) # ETTJ Pré 2a
+        if not juro_5a.empty and not juro_2a.empty:
+            spread_br = (juro_5a - juro_2a).dropna()
+            fig = px.area(spread_br, title="Spread 5 Anos - 2 Anos (Pré)")
+            fig.add_hline(y=0, line_dash="dash", line_color="gray")
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption("Mede a inclinação da curva de juros. Spreads crescentes (inclinação positiva) podem indicar expectativas de juros mais altos ou crescimento. Spreads decrescentes (achatamento) indicam o contrário.")
     
     with subtab_br_bc:
         st.subheader("Indicadores Monetários (BCB)")
