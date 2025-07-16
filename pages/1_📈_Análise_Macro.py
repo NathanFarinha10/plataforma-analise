@@ -71,30 +71,126 @@ def fetch_bcb_series(codes, start_date):
         return df if isinstance(df, pd.DataFrame) and not df.empty else pd.DataFrame()
     except: return pd.DataFrame()
 
-def plot_indicator_with_analysis(data_series, title, explanation, unit="Índice", hline=None):
-    if data_series is None or data_series.empty: st.warning(f"Não foi possível carregar os dados para {title}."); return
+# --- FUNÇÕES AUXILIARES (VERSÃO CORRIGIDA E MELHORADA) ---
+
+# ... (mantenha as funções fetch_fred_series e fetch_bcb_series como estão) ...
+
+def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice", hline=None, is_pct_change=False, start_date="2012-01-01"):
+    """
+    Função unificada para buscar, processar e plotar um indicador econômico.
+    - source: 'fred' ou 'bcb'
+    - code: O código do indicador na API.
+    - is_pct_change: Se True, calcula a variação anual (YoY).
+    """
+    data_series = pd.Series(dtype='float64') # Inicializa uma série vazia
+
+    # 1. Buscar os dados da fonte correta
+    if source == 'fred':
+        data_series = fetch_fred_series(code, start_date)
+    elif source == 'bcb':
+        # Para o BCB, o código pode ser um dicionário
+        if isinstance(code, dict):
+             df = fetch_bcb_series(code, start_date)
+             if not df.empty:
+                 data_series = df.iloc[:, 0] # Pega a primeira coluna do dataframe
+        else: # Ou uma string/código único
+             df = fetch_bcb_series({title: code}, start_date)
+             if not df.empty:
+                 data_series = df.iloc[:, 0]
+
+    if data_series is None or data_series.empty:
+        st.warning(f"Não foi possível carregar os dados para {title} ({code}).")
+        return
+
+    # 2. Processar os dados (cálculo de variação, se necessário)
     data_to_plot = data_series.copy()
+    if is_pct_change:
+        data_to_plot = data_to_plot.pct_change(12).dropna() * 100
+
     latest_value = data_to_plot.iloc[-1]
     prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
     prev_year_value = data_to_plot.iloc[-13] if len(data_to_plot) > 12 else None
+
+    # 3. Plotar o gráfico e as métricas
     col1, col2 = st.columns([3, 1])
     with col1:
         fig = px.area(data_to_plot, title=title)
         fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data", yaxis_tickformat=",.2f")
-        if hline is not None: fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
+        if hline is not None:
+            fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
         st.plotly_chart(fig, use_container_width=True)
     with col2:
-        st.markdown(f"**Análise do Indicador**"); st.caption(explanation)
+        st.markdown(f"**Análise do Indicador**")
+        st.caption(explanation)
         st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
+
         is_rate = (unit == "%")
+        delta_unit = " p.p." if is_rate else "%"
+
         if prev_month_value is not None:
-            change = ((latest_value / prev_month_value) - 1) * 100 if not is_rate and prev_month_value != 0 else latest_value - prev_month_value
-            unit_label = "%" if not is_rate else " p.p."
-            st.metric(label=f"Variação Mensal", value=f"{change:,.2f}{unit_label}", delta=f"{change:,.2f}")
+            change_mom = latest_value - prev_month_value if is_rate else ((latest_value / prev_month_value) - 1) * 100
+            st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{delta_unit}", delta=f"{change_mom:,.2f}")
+
         if prev_year_value is not None:
-            change = ((latest_value / prev_year_value) - 1) * 100 if not is_rate and prev_year_value != 0 else latest_value - prev_year_value
-            unit_label = "%" if not is_rate else " p.p."
-            st.metric(label=f"Variação Anual", value=f"{change:,.2f}{unit_label}", delta=f"{change:,.2f}")
+            change_yoy = latest_value - prev_year_value if is_rate else ((latest_value / prev_year_value) - 1) * 100
+            st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{delta_unit}", delta=f"{change_yoy:,.2f}")
+
+# --- ADICIONE ESTAS FUNÇÕES FALTANTES NA SEÇÃO DE FUNÇÕES AUXILIARES ---
+
+@st.cache_data(ttl=3600)
+def get_us_yield_curve_data():
+    codes = {
+        "3 Meses": "DGS3MO", "2 Anos": "DGS2", "5 Anos": "DGS5",
+        "10 Anos": "DGS10", "30 Anos": "DGS30"
+    }
+    yield_data = []
+    # Pega os dados dos últimos 10 dias para garantir que temos o valor mais recente
+    start = datetime.now() - pd.Timedelta(days=10)
+    for name, code in codes.items():
+        series = fetch_fred_series(code, start)
+        if not series.empty:
+            yield_data.append({'Prazo': name, 'Taxa (%)': series.iloc[-1]})
+    df = pd.DataFrame(yield_data)
+    if not df.empty:
+        df['Prazo'] = pd.Categorical(df['Prazo'], categories=codes.keys(), ordered=True)
+        return df.sort_values('Prazo')
+    return pd.DataFrame()
+
+@st.cache_data(ttl=3600)
+def fetch_market_data(tickers):
+    try:
+        data = yf.download(tickers, start=start_date)['Adj Close']
+        # Se baixar só um ticker, o yfinance não retorna um DF, mas uma Série.
+        if isinstance(data, pd.Series):
+            data = data.to_frame(tickers[0])
+        return data.dropna()
+    except Exception as e:
+        st.error(f"Falha ao buscar dados de mercado com yfinance: {e}")
+        return pd.DataFrame()
+
+def analyze_central_bank_discourse(text, lang='en'):
+    """Análise simples de sentimento baseada em palavras-chave."""
+    text = text.lower()
+    if lang == 'en':
+        hawkish_words = ['strong', 'tightening', 'inflation', 'raise', 'hike', 'robust', 'above target']
+        dovish_words = ['easing', 'cut', 'recession', 'unemployment', 'weak', 'below target', 'supportive']
+    else: # Português
+        hawkish_words = ['forte', 'aperto', 'inflação', 'aumentar', 'robusto', 'acima da meta']
+        dovish_words = ['afrouxamento', 'corte', 'recessão', 'desemprego', 'fraco', 'abaixo da meta', 'suporte']
+
+    hawkish_score = sum(text.count(word) for word in hawkish_words)
+    dovish_score = sum(text.count(word) for word in dovish_words)
+    return hawkish_score, dovish_score
+
+def style_recommendation(val):
+    """Aplica cores às recomendações na tabela."""
+    if val == "Overweight":
+        return 'background-color: #2E8B57; color: white' # Verde
+    elif val == "Underweight":
+        return 'background-color: #C70039; color: white' # Vermelho
+    elif val == "Neutral":
+        return 'background-color: #F39C12; color: white' # Amarelo/Laranja
+    return ''
 
 @st.cache_data(ttl=3600)
 def get_brazilian_yield_curve():
@@ -191,11 +287,11 @@ with tab_br:
     with subtab_br_bc:
         st.subheader("Painel de Política Monetária - Banco Central do Brasil")
         # Conteúdo desta aba
-# --- ABA EUA ---
+    
+# --- ABA EUA (VERSÃO CORRIGIDA) ---
 with tab_us:
     st.header("Principais Indicadores dos Estados Unidos")
     
-    # Definição de todas as sub-abas para a seção EUA
     subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_real_estate, subtab_us_yield, subtab_us_fed = st.tabs(["Atividade e Consumo", "Mercado de Trabalho", "Inflação", "Imobiliário", "Curva de Juros", "Visão do Fed"])
     
     with subtab_us_activity:
@@ -249,12 +345,12 @@ with tab_us:
         plot_indicator_with_analysis('fred', "PERMIT", "Permissões de Construção", "Indicador antecedente da atividade de construção.", unit="Milhares")
 
     with subtab_us_yield:
+        # A implementação desta aba já estava correta, mas agora usará a função que definimos.
         st.subheader("Análise da Curva de Juros Americana")
         st.caption("A forma e os spreads da curva de juros são um dos principais indicadores antecedentes da atividade econômica.")
         st.divider()
         st.markdown("##### Forma da Curva de Juros Atual")
-        # (A função get_us_yield_curve_data() deve estar definida na seção de funções auxiliares)
-        yield_curve_df = get_us_yield_curve_data()
+        yield_curve_df = get_us_yield_curve_data() # Agora esta função existe
         if not yield_curve_df.empty:
             fig_curve = px.line(yield_curve_df, x='Prazo', y='Taxa (%)', title="Curva de Juros do Tesouro Americano", markers=True)
             st.plotly_chart(fig_curve, use_container_width=True)
@@ -275,6 +371,7 @@ with tab_us:
                 fig = px.area(spread, title="Spread 2 Anos - 3 Meses"); fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
 
     with subtab_us_fed:
+        # Esta seção também precisa usar a nova função de plotagem para padronização
         st.subheader("Painel de Política Monetária - Federal Reserve (Fed)")
         st.caption("Acompanhe os indicadores, o balanço e a comunicação do banco central americano.")
         st.markdown("##### Indicadores Chave da Política Monetária")
@@ -282,7 +379,27 @@ with tab_us:
         with c1:
             plot_indicator_with_analysis('fred', "FEDFUNDS", "Fed Funds Rate", "A principal taxa de juros de política monetária.", unit="%")
         with c2:
-            plot_indicator_with_analysis('fred', "WALCL", "Ativos Totais no Balanço do Fed", "Aumentos (QE) indicam política expansionista; reduções (QT) indicam contracionista.", unit="$ Trilhões")
+            # Dividindo por 1M para mostrar em trilhões
+            balance_sheet = fetch_fred_series("WALCL", start_date) / 1000000
+            plot_indicator_with_analysis(None, None, "Ativos Totais no Balanço do Fed", "Aumentos (QE) indicam política expansionista; reduções (QT) indicam contracionista.", unit="$ Trilhões")
+            # ^ Note: A chamada acima foi ajustada para não usar a função unificada
+            # devido à transformação manual (divisão por 1M).
+            # Uma abordagem mais limpa seria refatorar a plot_indicator_with_analysis
+            # para aceitar uma série já transformada. Por agora, o código original
+            # para esta parte específica pode ser mantido e ajustado se necessário.
+            # CORREÇÃO MANUAL PARA ESTE GRÁFICO ESPECÍFICO:
+            if not balance_sheet.empty:
+                 fig_bal = px.area(balance_sheet, title="Ativos Totais no Balanço do Fed ($ Trilhões)")
+                 st.plotly_chart(fig_bal, use_container_width=True)
+            else:
+                 st.warning("Não foi possível carregar dados do balanço do Fed.")
+
+        # O restante da sua aba do FED está correto, apenas substitua a chamada
+        # save_json_data por save_data
+        # ... no seu código, troque a linha:
+        # save_json_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
+        # por:
+        # save_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
         st.divider()
         st.subheader("Acompanhamento Histórico do Discurso do FOMC")
         
@@ -337,7 +454,7 @@ with tab_us:
                                 new_meeting["pdf_path"] = file_path
                             
                             st.session_state.fomc_meetings.append(new_meeting)
-                            save_json_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
+                            save_data(st.session_state.fomc_meetings, FOMC_MEETINGS_FILE)
                             st.success("Nova reunião salva com sucesso!"); st.rerun()
                         else:
                             st.error("Data, Decisão e Texto da Ata são campos obrigatórios.")
