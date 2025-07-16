@@ -214,7 +214,7 @@ tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unido
 # --- ABA BRASIL ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
-    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação e Juros", "Visão do BCB"])
+    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Visão do BCB"])
     
     with subtab_br_activity:
         st.subheader("Indicadores de Atividade Econômica e Confiança")
@@ -254,8 +254,36 @@ with tab_br:
         )
     
     with subtab_br_inflation:
-        st.subheader("Inflação e Juros")
-        plot_indicator(fetch_bcb_series(13522, start_date), "IPCA (Acum. 12M %)")
+        st.subheader("Indicadores de Inflação e Preços")
+        st.caption("Acompanhe os principais índices de preços e seus componentes para entender a dinâmica inflacionária no Brasil.")
+        st.divider()
+
+        col1, col2 = st.columns(2)
+        with col1:
+            plot_indicator_with_analysis('bcb', 433, "IPCA (Variação Mensal)", 
+                "Mede a inflação oficial do país sob a ótica do consumidor. É o principal indicador para a meta de inflação do Banco Central.", unit="%"
+            )
+        with col2:
+            plot_indicator_with_analysis('bcb', 11427, "Média dos Núcleos de Inflação",
+                "Mede a tendência de fundo da inflação, excluindo os itens mais voláteis. É um indicador crucial para a decisão de juros do BCB.", unit="%"
+            )
+        st.divider()
+        
+        st.markdown("##### Decomposição da Inflação ao Consumidor")
+        col3, col4 = st.columns(2)
+        with col3:
+            plot_indicator_with_analysis('bcb', 4449, "IPCA - Bens Industrializados",
+                "Mede a inflação dos produtos industriais, mais sensível ao câmbio e aos preços de commodities.", unit="%"
+            )
+        with col4:
+            plot_indicator_with_analysis('bcb', 4448, "IPCA - Serviços",
+                "Mede a inflação do setor de serviços, mais sensível à atividade econômica doméstica e aos salários.", unit="%"
+            )
+        st.divider()
+
+        plot_indicator_with_analysis('bcb', 189, "IGP-M (Variação Mensal)",
+            "Mede a inflação de forma mais ampla, incluindo preços no atacado e na construção. Conhecido como a 'inflação do aluguel'.", unit="%"
+        )
     
     with subtab_br_bc:
         st.subheader("Indicadores Monetários (BCB)")
