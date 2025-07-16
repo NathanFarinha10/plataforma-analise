@@ -513,22 +513,46 @@ with tab_br:
                             st.success("Registro excluído!"); st.rerun()
                         st.divider()
     
-# --- ABA EUA (VERSÃO CORRIGIDA) ---
-with tab_us:
-    st.header("Principais Indicadores dos Estados Unidos")
+    # --- ABA EUA (VERSÃO CORRIGIDA) ---
+    with tab_us:
+        st.header("Principais Indicadores dos Estados Unidos")
+        
+        subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_real_estate, subtab_us_yield, subtab_us_fed = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Imobiliário", "Curva de Juros", "Visão do Fed"])
+        
+        with subtab_us_activity:
+        st.subheader("Indicadores de Atividade Econômica")
+        st.caption("Analise a saúde dos setores industrial e de serviços, além da força do consumo, os principais motores da economia americana.")
+        st.divider()
     
-    subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_real_estate, subtab_us_yield, subtab_us_fed = st.tabs(["Atividade e Consumo", "Mercado de Trabalho", "Inflação", "Imobiliário", "Curva de Juros", "Visão do Fed"])
+        st.markdown("#### Setor Industrial")
+        col1, col2 = st.columns(2)
+        with col1:
+            # Novas Ordens de Manufatura - FRED: AMTMNO
+            plot_indicator_with_analysis('fred', "AMTMNO", "Novas Ordens da Indústria (Manufatura)", "Mede o valor de novos pedidos feitos à indústria. É um indicador antecedente chave da produção futura.", "Var. Anual %", is_pct_change=True)
+        with col2:
+            # Emprego na Manufatura - FRED: MANEMP
+            plot_indicator_with_analysis('fred', "MANEMP", "Emprego na Indústria (Manufatura)", "Número de trabalhadores empregados no setor industrial. Indica a saúde e a capacidade de expansão do setor.", "Var. Anual %", is_pct_change=True)
     
-    with subtab_us_activity:
-        st.subheader("Indicadores de Atividade, Produção e Consumo")
+        # Salários na Manufatura - FRED: CES3000000003
+        plot_indicator_with_analysis('fred', "CES3000000003", "Salário Médio por Hora na Indústria", "Mede a evolução do custo da mão de obra na indústria. Importante para pressões de custos e inflação de bens.", "Var. Anual %", is_pct_change=True)
         st.divider()
-        plot_indicator_with_analysis('fred', "INDPRO", "Produção Industrial", "Mede a produção total das fábricas, minas e serviços de utilidade pública. Um forte indicador da saúde do setor secundário da economia.", "Var. Anual %", is_pct_change=True)
-        st.divider()
-        plot_indicator_with_analysis('fred', "RSXFS", "Vendas no Varejo (Ex-Alimentação)", "Mede o total de vendas de bens no varejo. É um indicador chave da força do consumo das famílias.", "Var. Anual %", is_pct_change=True)
-        st.divider()
-        plot_indicator_with_analysis('fred', "PCEC96", "Consumo Pessoal (PCE Real)", "Mede os gastos totais dos consumidores, ajustado pela inflação. É o principal componente do PIB.", "Var. Anual %", is_pct_change=True)
-        st.divider()
-        plot_indicator_with_analysis('fred', "UMCSENT", "Sentimento do Consumidor (Univ. Michigan)", "Mede a confiança dos consumidores. Um sentimento alto geralmente precede maiores gastos.", "Índice")
+    
+        st.markdown("#### Serviços, Consumo e Atividade Geral")
+        col3, col4 = st.columns(2)
+        with col3:
+            # Emprego em Serviços - FRED: USPBS
+            plot_indicator_with_analysis('fred', "USPBS", "Emprego em Serviços Profissionais", "Número de trabalhadores em serviços de alto valor agregado. Reflete a força do setor terciário, o maior da economia.", "Var. Anual %", is_pct_change=True)
+            # Produção Industrial - FRED: INDPRO
+            plot_indicator_with_analysis('fred', "INDPRO", "Produção Industrial Total", "Mede a produção física total das fábricas, minas e serviços de utilidade pública no país.", "Var. Anual %", is_pct_change=True)
+    
+        with col4:
+            # Consumo Pessoal (PCE) - FRED: PCEC96
+            plot_indicator_with_analysis('fred', "PCEC96", "Consumo Pessoal Real (PCE)", "Mede os gastos totais dos consumidores, ajustados pela inflação. É o principal componente do PIB.", "Var. Anual %", is_pct_change=True)
+            # Vendas no Varejo - FRED: RSXFS
+            plot_indicator_with_analysis('fred', "RSXFS", "Vendas no Varejo (Ex-Alimentação)", "Mede o total de vendas de bens no varejo. Indicador chave da força do consumo das famílias.", "Var. Anual %", is_pct_change=True)
+    
+        # Sentimento do Consumidor - FRED: UMCSENT
+        plot_indicator_with_analysis('fred', "UMCSENT", "Sentimento do Consumidor (Univ. Michigan)", "Mede a confiança dos consumidores na economia. Um sentimento alto geralmente precede maiores gastos.", "Índice")
 
     with subtab_us_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Americano")
