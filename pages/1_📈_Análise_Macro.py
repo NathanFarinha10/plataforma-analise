@@ -90,6 +90,42 @@ def plot_indicator(data, title, y_label="Valor"):
     fig.update_layout(showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
+def plot_indicator_with_analysis(code, title, explanation, unit="", start_date="2010-01-01"):
+    """
+    Busca um indicador do FRED, plota o gráfico e exibe uma caixa de análise ao lado
+    com explicação, último valor e variações.
+    """
+    data = fetch_fred_series(code, start_date).dropna()
+    
+    if data.empty:
+        st.warning(f"Não foi possível carregar os dados para {title}.")
+        return
+
+    # Cálculos para as métricas
+    latest_value = data.iloc[-1]
+    prev_month_value = data.iloc[-2] if len(data) > 1 else None
+    prev_year_value = data.iloc[-13] if len(data) > 12 else None
+    
+    change_mom = latest_value - prev_month_value if prev_month_value is not None else None
+    change_yoy = latest_value - prev_year_value if prev_year_value is not None else None
+
+    # Layout em colunas
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        fig = px.area(data, title=title)
+        fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.markdown(f"**Análise do Indicador**")
+        st.caption(explanation)
+        st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
+        if change_mom is not None:
+            st.metric(label="Variação Mensal", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
+        if change_yoy is not None:
+            st.metric(label="Variação Anual", value=f"{change_yoy:,.2f}", delta=f"{change_yoy:,.2f}")
+
 def analyze_central_bank_discourse(text, lang='pt'):
     text = text.lower(); text = re.sub(r'\d+', '', text)
     if lang == 'pt':
@@ -160,18 +196,49 @@ with tab_us:
     with subtab_us_real_estate:
         st.subheader("Indicadores do Mercado Imobiliário Americano")
         st.caption("O setor imobiliário é um dos principais motores do ciclo econômico dos EUA.")
+        st.divider()
 
-        col1, col2 = st.columns(2)
-        with col1:
-            plot_indicator(fetch_fred_series("MORTGAGE30US", start_date), "Taxa de Financiamento Imobiliário 30 Anos", "Taxa %")
-            plot_indicator(fetch_fred_series("PERMIT", start_date), "Permissões de Construção (Milhares de Unidades)")
-            plot_indicator(fetch_fred_series("NHFSEPUCS", start_date), "Casas em Construção (Milhares de Unidades)")
-        with col2:
-            plot_indicator(fetch_fred_series("CSUSHPISA", start_date), "S&P/Case-Shiller U.S. National Home Price Index")
-            plot_indicator(fetch_fred_series("HOUST", start_date), "Novas Casas Iniciadas (Milhares de Unidades)")
-            plot_indicator(fetch_fred_series("HSN1F", start_date), "Casas Novas Vendidas (Milhares de Unidades)")
-        
-        plot_indicator(fetch_fred_series("EXHOSLUSM495S", start_date), "Casas Existentes à Venda (Milhares de Unidades)")
+        plot_indicator_with_analysis(
+            code="MORTGAGE30US",
+            title="Taxa de Financiamento Imobiliário 30 Anos",
+            explanation="Mede o custo do crédito para compra de imóveis. Taxas mais altas desestimulam a demanda, enquanto taxas mais baixas a incentivam.",
+            unit="%"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="CSUSHPISA",
+            title="S&P/Case-Shiller U.S. National Home Price Index",
+            explanation="Principal índice de preços de imóveis residenciais. Mostra a valorização (ou desvalorização) das casas. É um indicador de inflação de ativos.",
+            unit="Índice"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="PERMIT",
+            title="Permissões de Construção",
+            explanation="É um indicador antecedente da atividade de construção. Um aumento nas permissões sinaliza um aquecimento do setor no futuro próximo.",
+            unit="Milhares"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="HOUST",
+            title="Novas Casas Iniciadas",
+            explanation="Mede o número de novas residências que começaram a ser construídas. É um indicador direto da atividade atual do setor de construção.",
+            unit="Milhares"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="HSN1F",
+            title="Casas Novas Vendidas",
+            explanation="Mede a força da demanda por novas propriedades. Um aumento nas vendas indica um mercado aquecido e confiança do consumidor.",
+            unit="Milhares"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="EXHOSLUSM495S",
+            title="Casas Existentes à Venda (Estoque)",
+            explanation="Mede o estoque de casas usadas disponíveis para venda. Um estoque baixo pressiona os preços para cima; um estoque alto indica um mercado mais fraco.",
+            unit="Milhares"
+        )
     with subtab_us_bc:
         st.subheader("Indicadores Monetários (Fed)")
         plot_indicator(fetch_fred_series("M2SL", start_date).pct_change(12).dropna()*100, "M2 (Var. Anual %)")
