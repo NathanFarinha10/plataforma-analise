@@ -233,7 +233,7 @@ with tab_br:
 # --- ABA EUA ---
 with tab_us:
     st.header("Principais Indicadores dos Estados Unidos")
-    subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_yield, subtab_us_real_estate, subtab_us_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Curva de Juros", "Mercado Imobiliário", "Visão do Fed"])
+    subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_yield, subtab_us_real_estate, subtab_us_fed = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação", "Curva de Juros", "Mercado Imobiliário", "Visão do Fed"])
     
     with subtab_us_activity:
         st.subheader("Indicadores de Atividade, Produção e Consumo")
@@ -461,18 +461,59 @@ with tab_us:
             explanation="Mede o estoque de casas usadas disponíveis para venda. Um estoque baixo pressiona os preços para cima; um estoque alto indica um mercado mais fraco.",
             unit="Milhares"
         )
-    with subtab_us_bc:
-        st.subheader("Indicadores Monetários (Fed)")
-        plot_indicator(fetch_fred_series("M2SL", start_date).pct_change(12).dropna()*100, "M2 (Var. Anual %)")
+
+    with subtab_us_fed:
+        st.subheader("Painel de Política Monetária - Federal Reserve (Fed)")
+        st.caption("Acompanhe as ferramentas e os indicadores que guiam as decisões do banco central americano.")
         st.divider()
-        st.subheader("Análise do Discurso (Ata do FOMC)")
-        fomc_text = st.text_area("Cole aqui o texto da ata do FOMC:", height=150, key="fomc_text")
-        if st.button("Analisar Discurso do FOMC"):
-            if fomc_text.strip():
-                h,d = analyze_central_bank_discourse(fomc_text, lang='en')
-                c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅", h); c2.metric("Placar Dovish 🕊️",d)
-                bal = "Hawkish" if h>d else "Dovish" if d>h else "Neutro"
-                c3.metric("Balanço Final", bal)
+
+        # Seção de Política de Juros
+        st.markdown("##### Política de Taxa de Juros")
+        ffr_data = fetch_fred_series("FEDFUNDS", start_date)
+        if not ffr_data.empty:
+            ffr_target_upper = fetch_fred_series("FEDTARU", start_date)
+            ffr_target_lower = fetch_fred_series("FEDTARL", start_date)
+            
+            fig = px.line(ffr_data, title="Fed Funds Rate (Efetiva vs. Meta)")
+            fig.add_scatter(x=ffr_target_upper.index, y=ffr_target_upper, mode='lines', name='Meta Superior', line=dict(dash='dash', color='gray'))
+            fig.add_scatter(x=ffr_target_lower.index, y=ffr_target_lower, mode='lines', name='Meta Inferior', line=dict(dash='dash', color='gray'))
+            fig.update_layout(yaxis_title="Taxa (%)", legend_title="Série")
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption("O gráfico mostra a taxa efetiva de juros (azul) em comparação com a banda da meta definida pelo Fed (cinza).")
+        st.divider()
+
+        # Seção de Balanço e Agregados
+        st.markdown("##### Balanço do Fed e Agregados Monetários")
+        col1, col2 = st.columns(2)
+        with col1:
+            plot_indicator_with_analysis("WALCL", "Ativos Totais no Balanço do Fed", "Mede o tamanho do balanço do Fed. Aumentos (Quantitative Easing) indicam política monetária expansionista; reduções (Quantitative Tightening) indicam política contracionista.", unit="$ Trilhões")
+        with col2:
+            plot_indicator_with_analysis("M2SL", "Agregado Monetário M2", "Mede a quantidade total de 'dinheiro' na economia. Sua variação anual pode ser um indicador antecedente de inflação.", unit="Var. Anual %", is_pct_change=True)
+        st.divider()
+
+        # Seção de Contexto Fiscal e Análise de Discurso
+        st.markdown("##### Contexto Fiscal e Comunicação")
+        col3, col4 = st.columns(2)
+        with col3:
+            debt = fetch_fred_series("GFDEBTN", start_date)
+            gdp = fetch_fred_series("GDP", start_date)
+            if not debt.empty and not gdp.empty:
+                gdp = gdp.resample('D').ffill()
+                debt_to_gdp = (debt / (gdp * 1_000_000_000)).dropna() * 100
+                fig_debt = px.area(debt_to_gdp, title="Dívida Pública / PIB (%)")
+                fig_debt.update_layout(showlegend=False, yaxis_title="%")
+                st.plotly_chart(fig_debt, use_container_width=True)
+                st.caption("Mede a alavancagem do governo. Níveis elevados podem pressionar os juros de longo prazo e a inflação futura.")
+    
+        with col4:
+            st.markdown("**Análise do Discurso (Ata do FOMC)**")
+            fomc_text = st.text_area("Cole aqui o texto da ata do FOMC:", height=150, key="fomc_text_final")
+            if st.button("Analisar Discurso do FOMC", key="fomc_btn_final"):
+                if fomc_text.strip():
+                    h,d = analyze_central_bank_discourse(fomc_text, lang='en')
+                    c1,c2,c3 = st.columns(3); c1.metric("Placar Hawkish 🦅", h); c2.metric("Placar Dovish 🕊️",d)
+                    bal = "Hawkish" if h>d else "Dovish" if d>h else "Neutro"
+                    c3.metric("Balanço Final", bal)
 
 # --- ABA MERCADOS GLOBAIS ---
 with tab_global:
