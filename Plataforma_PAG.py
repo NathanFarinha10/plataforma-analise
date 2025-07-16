@@ -1,4 +1,4 @@
-# 0_🏠_Dashboard_Principal.py (Versão Final e Estável)
+# Nome do Arquivo: 0_🏠_Dashboard_Principal.py (ou o nome que você deu à sua página principal)
 
 import streamlit as st
 import yfinance as yf
@@ -16,10 +16,11 @@ st.set_page_config(
 )
 
 # --- Adiciona a logo no topo da barra lateral ---
+# Esta linha deve estar em todas as páginas para consistência.
 try:
     st.sidebar.image("logo.png", use_container_width=True)
 except Exception:
-    st.sidebar.warning("Logo não encontrada.")
+    st.sidebar.warning("Arquivo de logo 'logo.png' não encontrado.")
 
 # --- BANCO DE DADOS DE USUÁRIOS E SENHAS (PARA TESTE) ---
 VALID_CREDENTIALS = {
@@ -44,8 +45,12 @@ def get_homepage_market_data():
 
 def login_form():
     """Cria e gerencia o formulário de login."""
-    st.image("logo.png", width=300) # Logo na tela de login
-    st.title("Bem-vindo à Highpar Global")
+    try:
+        st.image("logo.png", width=300)
+    except:
+        st.title("Highpar Global")
+    
+    st.markdown("Por favor, faça o login para continuar.")
     
     with st.form("login_form"):
         username = st.text_input("Usuário").lower()
@@ -64,19 +69,34 @@ def login_form():
                 st.error("Usuário ou senha incorreto(a)")
 
 # --- LÓGICA DE EXIBIÇÃO PRINCIPAL ---
+if 'authentication_status' not in st.session_state:
+    st.session_state.authentication_status = None
 
-# 1. TELA DE LOGIN (se o usuário não estiver autenticado)
-if not st.session_state.get("authentication_status"):
+# Lógica da Tela de Splash (só roda uma vez por sessão)
+if 'splash_screen_done' not in st.session_state:
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        try:
+            st.image("logo.png", use_container_width=True)
+        except Exception:
+            st.markdown("<h1 style='text-align: center;'>Highpar Global</h1>", unsafe_allow_html=True)
+        with st.spinner("Carregando plataforma..."):
+            time.sleep(3)
+    st.session_state.splash_screen_done = True
+    st.rerun()
+
+# Se não estiver autenticado, mostra o formulário de login
+if not st.session_state["authentication_status"]:
     col1, col2, col3 = st.columns([1,1.5,1])
     with col2:
         login_form()
-
-# 2. DASHBOARD PRINCIPAL (se o usuário estiver autenticado)
 else:
+    # Se o login for bem-sucedido, mostra o dashboard principal
     with st.sidebar:
         st.write(f'Bem-vindo(a), *{st.session_state["name"]}*')
         if st.button("Logout"):
-            for key in list(st.session_state.keys()): del st.session_state[key]
+            for key in list(st.session_state.keys()):
+                if key != 'splash_screen_done': del st.session_state[key]
             st.rerun()
 
     st.title("Dashboard de Visão Geral - Highpar Global")
@@ -90,7 +110,7 @@ else:
         if "Dólar (USD/BRL)" in market_data: c3.metric("Dólar (USD/BRL)", f"{market_data['Dólar (USD/BRL)']['price']:.2f}", f"{market_data['Dólar (USD/BRL)']['change']:.2f}%")
         if "US 10Y Treasury" in market_data: c4.metric("US 10Y Yield", f"{market_data['US 10Y Treasury']['price']:.2f}%", f"{market_data['US 10Y Treasury']['change']:.2f}%")
         if "VIX" in market_data: c5.metric("VIX (Volatilidade)", f"{market_data['VIX']['price']:.2f}", f"{market_data['VIX']['change']:.2f}%", delta_color="inverse")
-    except Exception as e:
+    except Exception:
         st.warning(f"Não foi possível carregar os dados do ticker de mercado no momento.")
 
     st.divider()
@@ -111,13 +131,15 @@ else:
         
         tab1, tab2 = st.tabs(["Ações (S&P 500)", "Juros (US 10Y)"])
         with tab1:
-            fig_sp500 = px.line(data_sp500)
-            fig_sp500.update_layout(showlegend=False, yaxis_title="Preço", xaxis_title=None, title=None, margin=dict(t=0, b=0, l=0, r=0))
-            st.plotly_chart(fig_sp500, use_container_width=True)
+            if not data_sp500.empty:
+                fig_sp500 = px.line(data_sp500)
+                fig_sp500.update_layout(showlegend=False, yaxis_title="Preço", xaxis_title=None, title=None, margin=dict(t=5, b=5, l=5, r=5))
+                st.plotly_chart(fig_sp500, use_container_width=True)
         with tab2:
-            fig_tnx = px.line(data_tnx)
-            fig_tnx.update_layout(showlegend=False, yaxis_title="Taxa %", xaxis_title=None, title=None, margin=dict(t=0, b=0, l=0, r=0))
-            st.plotly_chart(fig_tnx, use_container_width=True)
+            if not data_tnx.empty:
+                fig_tnx = px.line(data_tnx)
+                fig_tnx.update_layout(showlegend=False, yaxis_title="Taxa %", xaxis_title=None, title=None, margin=dict(t=5, b=5, l=5, r=5))
+                st.plotly_chart(fig_tnx, use_container_width=True)
 
     st.divider()
     st.header("Navegue pelos Módulos de Análise")
