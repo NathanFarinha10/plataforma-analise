@@ -69,22 +69,10 @@ fred = get_fred_api()
 
 @st.cache_data(ttl=3600)
 def fetch_fred_series(code, start_date):
-    """Busca uma única série do FRED de forma robusta e com diagnóstico de erro."""
-    try:
-        series = fred.get_series(code, start_date)
+    """Busca uma única série do FRED de forma robusta."""
+    try: return fred.get_series(code, start_date)
+    except: return pd.Series(dtype='float64')
         
-        # Verifica se a API retornou uma série vazia sem dar erro
-        if series.empty:
-            st.error(f"DEBUG: A chamada para o código '{code}' retornou uma série de dados vazia.")
-            return pd.Series(dtype='float64')
-            
-        return series
-        
-    except Exception as e:
-        # PONTO CHAVE: Exibe a mensagem de erro real na tela
-        st.error(f"DEBUG: Ocorreu uma exceção ao buscar o código '{code}': {e}")
-        return pd.Series(dtype='float64')
-
 @st.cache_data(ttl=3600)
 def fetch_bcb_series(code, start_date):
     try:
@@ -106,29 +94,38 @@ def plot_indicator(data, title, y_label="Valor"):
     fig.update_layout(showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
-def plot_indicator_with_analysis(code, title, explanation, unit="", start_date="2005-01-01", is_pct_change=False, hline=None):
+def plot_indicator_with_analysis(code, title, explanation, unit="Índice", start_date="2005-01-01", hline=None):
+    """
+    Busca um indicador do FRED, plota sua variação anual e exibe uma caixa de análise
+    com último valor, variação mensal (MoM) e anual (YoY).
+    """
     data = fetch_fred_series(code, start_date).dropna()
     if data.empty:
         st.warning(f"Não foi possível carregar os dados para {title}."); return
 
-    data_to_plot = data.pct_change(12).dropna() * 100 if is_pct_change else data
+    # Calcula as variações percentuais para as métricas
+    yoy_change = (data.pct_change(12).dropna()) * 100
+    mom_change = (data.pct_change(1).dropna()) * 100
 
-    latest_value = data_to_plot.iloc[-1]
-    prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
+    if yoy_change.empty or mom_change.empty:
+        st.warning(f"Dados insuficientes para calcular as variações de {title}."); return
+
+    latest_yoy = yoy_change.iloc[-1]
+    latest_mom = mom_change.iloc[-1]
     
     col1, col2 = st.columns([3, 1])
     with col1:
-        fig = px.area(data_to_plot, title=title)
-        fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data")
+        # O gráfico principal mostra a variação anual (YoY), que é o mais comum
+        fig = px.area(yoy_change, title=title)
+        fig.update_layout(showlegend=False, yaxis_title="Variação Anual %", xaxis_title="Data")
         if hline is not None:
             fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
         st.plotly_chart(fig, use_container_width=True)
     with col2:
         st.markdown(f"**Análise do Indicador**"); st.caption(explanation)
-        st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
-        if prev_month_value is not None:
-            change_mom = latest_value - prev_month_value
-            st.metric(label="Variação Mensal", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
+        st.metric(label="Variação Anual (YoY)", value=f"{latest_yoy:.2f}%")
+        st.metric(label="Variação Mensal (MoM)", value=f"{latest_mom:.2f}%", delta=f"{latest_mom:.2f}%")
+        st.metric(label=f"Último Valor ({unit})", value=f"{data.iloc[-1]:,.2f}")
 
 def analyze_central_bank_discourse(text, lang='pt'):
     text = text.lower(); text = re.sub(r'\d+', '', text)
@@ -257,8 +254,58 @@ with tab_us:
         )
     
     with subtab_us_inflation:
-        st.subheader("Inflação e Juros")
-        plot_indicator(fetch_fred_series("CPIAUCSL", start_date).pct_change(12).dropna() * 100, "CPI (Var. Anual %)")
+        st.subheader("Indicadores de Inflação e Preços")
+        st.caption("A dinâmica da inflação é o principal fator que guia as decisões de juros do Federal Reserve.")
+        
+        # --- CPI ---
+        st.markdown("#### Consumer Price Index (CPI) - Inflação ao Consumidor")
+        col_cpi1, col_cpi2 = st.columns(2)
+        with col_cpi1:
+            plot_indicator_with_analysis("CPIAUCSL", "CPI Cheio", "Mede a variação de preços de uma cesta ampla de bens e serviços, incluindo alimentos e energia. É a principal medida de inflação para o público.")
+        with col_cpi2:
+            plot_indicator_with_analysis("CPILFESL", "Core CPI (Núcleo)", "Exclui os componentes voláteis de alimentos e energia para medir a tendência de fundo da inflação. É muito observado pelo Fed.")
+        
+        col_cpi3, col_cpi4 = st.columns(2)
+        with col_cpi3:
+            plot_indicator_with_analysis("CUSR0000SAD", "CPI - Bens Duráveis", "Mede a inflação específica de bens de consumo duráveis, como carros e eletrodomésticos.")
+        with col_cpi4:
+            plot_indicator_with_analysis("CUSR0000SAS", "CPI - Serviços", "Mede a inflação no setor de serviços, que é mais sensível aos salários e geralmente mais 'pegajosa'.")
+
+        st.divider()
+
+        # --- PCE ---
+        st.markdown("#### Personal Consumption Expenditures (PCE) - A Métrica do Fed")
+        col_pce1, col_pce2 = st.columns(2)
+        with col_pce1:
+            plot_indicator_with_analysis("PCEPI", "PCE Cheio", "A medida de inflação preferida pelo Fed. Sua cesta é mais ampla e dinâmica que a do CPI.")
+        with col_pce2:
+            plot_indicator_with_analysis("PCEPILFE", "Core PCE (Núcleo)", "O indicador mais importante para a política monetária. A meta do Fed é de 2% para este núcleo.")
+        
+        col_pce3, col_pce4 = st.columns(2)
+        with col_pce3:
+             plot_indicator_with_analysis("DGDSRG3Q086SBEA", "PCE - Bens", "Mede a inflação específica para a cesta de bens dentro do PCE.")
+        with col_pce4:
+             plot_indicator_with_analysis("DPCERG3Q086SBEA", "PCE - Serviços", "Mede a inflação no setor de serviços dentro do PCE, componente crucial da análise do Fed.")
+
+        st.divider()
+
+        # --- PPI & Expectativas ---
+        st.markdown("#### Producer Price Index (PPI) & Expectativas")
+        col_ppi1, col_ppi2 = st.columns(2)
+        with col_ppi1:
+            plot_indicator_with_analysis("PPIACO", "PPI Cheio", "Mede a inflação na porta da fábrica (preços no atacado). É um indicador antecedente para a inflação ao consumidor (CPI).")
+        with col_ppi2:
+            plot_indicator_with_analysis("PPIFES", "Core PPI (Núcleo)", "Exclui alimentos e energia do PPI para mostrar a tendência de fundo dos preços ao produtor.")
+        
+        # Para o MICH, não calculamos variação percentual, apenas mostramos o índice
+        st.divider()
+        mich_data = fetch_fred_series("MICH", start_date)
+        fig_mich = px.line(mich_data, title="Expectativa de Inflação (Univ. Michigan - 1 Ano)")
+        fig_mich.update_layout(showlegend=False, yaxis_title="Inflação Esperada (%)")
+        st.plotly_chart(fig_mich, use_container_width=True)
+        st.caption("Mede a inflação que os consumidores esperam para os próximos 12 meses. Importante para o Fed, pois as expectativas podem influenciar a inflação futura.")
+
+    
     with subtab_us_yield:
         st.subheader("Spread da Curva de Juros (10 Anos - 2 Anos)")
         s10a = fetch_fred_series("DGS10", start_date); s2a = fetch_fred_series("DGS2", start_date)
