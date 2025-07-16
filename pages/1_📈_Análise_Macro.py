@@ -973,13 +973,14 @@ with tab_global:
                 st.plotly_chart(px.line(rolling_vol, title="Volatilidade Anualizada Móvel (60d)"), use_container_width=True)
                 st.divider()
     
-        # --- SEÇÃO 4: ANÁLISE DE VALUATION ---
-        st.markdown("##### Análise de Valuation (P/L do S&P 500)")
-        # FRED: MULTPL/SP500_PE_RATIO_MONTH
+        # --- SEÇÃO 4: ANÁLISE DE VALUATION (CORRIGIDA) ---
+        st.markdown("##### Análise de Valuation (Shiller P/E Ratio)")
+        # CORREÇÃO: Trocado o P/L tradicional pelo Shiller P/E (CAPE), mais robusto.
+        # FRED: SHILLER_PE_RATIO_MONTH
         plot_indicator_with_analysis(
-            'fred', "MULTPL/SP500_PE_RATIO_MONTH",
-            "Índice Preço/Lucro (P/L) do S&P 500",
-            "Mede quantas vezes o preço do índice negocia em relação ao lucro das empresas. Usado para avaliar se o mercado está 'caro' ou 'barato' frente à sua história.",
+            'fred', "SHILLER_PE_RATIO_MONTH",
+            "Shiller P/E Ratio (CAPE)",
+            "Mede o preço do S&P 500 dividido pela média dos lucros dos últimos 10 anos, ajustados pela inflação. É uma medida de valuation de longo prazo.",
             unit="Ratio"
         )
         st.divider()
