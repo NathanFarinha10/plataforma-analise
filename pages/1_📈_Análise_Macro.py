@@ -623,7 +623,7 @@ with tab_us:
         # Expectativa de Inflação (Michigan) - FRED: MICH
         plot_indicator_with_analysis('fred', "MICH", "Expectativa de Inflação (Univ. Michigan - 1 Ano)", "Mede a inflação que os consumidores esperam para os próximos 12 meses. Importante para ancoragem das expectativas.", unit="%")
 
-     with subtab_us_real_estate:
+    with subtab_us_real_estate:
         st.subheader("Indicadores do Mercado Imobiliário Americano")
         st.caption("O setor imobiliário é um dos mais sensíveis aos juros e um dos principais motores do ciclo econômico dos EUA.")
         st.divider()
