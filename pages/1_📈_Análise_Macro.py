@@ -144,6 +144,20 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
 
 # --- ADICIONE ESTAS FUNÇÕES FALTANTES NA SEÇÃO DE FUNÇÕES AUXILIARES ---
 
+# ADICIONE ESTA FUNÇÃO JUNTO COM AS OUTRAS FUNÇÕES AUXILIARES
+@st.cache_data(ttl=3600)
+def get_yfinance_valuation(ticker="SPY"):
+    """Busca dados de valuation (P/L) do yfinance para um ticker."""
+    try:
+        info = yf.Ticker(ticker).info
+        # Usamos .get() para evitar erros caso a chave não exista
+        trailing_pe = info.get('trailingPE', 'N/A')
+        forward_pe = info.get('forwardPE', 'N/A')
+        return trailing_pe, forward_pe
+    except Exception:
+        # Se houver qualquer erro na chamada da API, retorna 'N/A'
+        return 'N/A', 'N/A'
+
 @st.cache_data(ttl=3600)
 def get_us_yield_curve_data():
     codes = {
@@ -973,30 +987,28 @@ with tab_global:
                 st.plotly_chart(px.line(rolling_vol, title="Volatilidade Anualizada Móvel (60d)"), use_container_width=True)
                 st.divider()
     
-        # --- SEÇÃO 4: ANÁLISE DE VALUATION (BUFFETT INDICATOR) ---
-        st.markdown("##### Análise de Valuation (Buffett Indicator: Market Cap / GDP)")
-        st.caption("Compara a capitalização total do mercado de ações (Wilshire 5000) com o PIB dos EUA. Uma métrica de valuation de alto nível.")
+        
+        # --- SEÇÃO 4: ANÁLISE DE VALUATION (SNAPSHOT VIA YFINANCE) ---
+        st.markdown("##### Análise de Valuation (Snapshot S&P 500 via SPY)")
+        st.caption("Exibe o valuation atual do S&P 500, utilizando o ETF SPY como proxy. Fonte: Yahoo Finance.")
     
-        # Buscar as duas séries necessárias
-        market_cap = fetch_fred_series("WILL5000INDFC", start_date)
-        gdp = fetch_fred_series("GDP", start_date)
-    
-        if not market_cap.empty and not gdp.empty:
-            # Alinhar as séries. GDP é trimestral, então vamos preencher para frente (forward-fill) para ter valores diários.
-            gdp = gdp.resample('D').ffill()
+        # Busca os dados de valuation usando a nova função
+        trailing_pe, forward_pe = get_yfinance_valuation("SPY")
+        
+        col_val1, col_val2 = st.columns(2)
+        with col_val1:
+            st.metric(
+                label="P/L Trailing (Últimos 12M)",
+                value=f"{trailing_pe:.2f}" if isinstance(trailing_pe, (int, float)) else str(trailing_pe)
+            )
+            st.help("Preço da ação dividido pelo lucro por ação dos últimos 12 meses. Mostra o quanto o mercado está pagando pelo lucro passado.")
             
-            # Unir as duas séries, garantindo que os índices de data correspondam
-            df_valuation = pd.concat([market_cap, gdp], axis=1).dropna()
-            df_valuation.columns = ['MarketCap', 'GDP']
-            
-            # O Market Cap está em bilhões de USD, e o PIB também. O ratio é direto.
-            df_valuation['BuffettIndicator'] = (df_valuation['MarketCap'] / df_valuation['GDP']) * 100
-            
-            fig_valuation = px.area(df_valuation['BuffettIndicator'], title="Buffett Indicator (%)")
-            fig_valuation.update_layout(showlegend=False, yaxis_title="%")
-            st.plotly_chart(fig_valuation, use_container_width=True)
-        else:
-            st.warning("Não foi possível carregar os dados para o Buffett Indicator.")
+        with col_val2:
+            st.metric(
+                label="P/L Forward (Projetado 12M)",
+                value=f"{forward_pe:.2f}" if isinstance(forward_pe, (int, float)) else str(forward_pe)
+            )
+            st.help("Preço da ação dividido pelo lucro projetado para os próximos 12 meses. Mostra a expectativa do mercado sobre os lucros futuros.")
         st.divider()
     
         # --- SEÇÃO 5: ANÁLISE DE ESTILO/FATOR ---
