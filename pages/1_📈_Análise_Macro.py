@@ -699,30 +699,60 @@ with tab_us:
         )
 
     with subtab_us_yield:
-        # A implementação desta aba já estava correta, mas agora usará a função que definimos.
         st.subheader("Análise da Curva de Juros Americana")
         st.caption("A forma e os spreads da curva de juros são um dos principais indicadores antecedentes da atividade econômica.")
         st.divider()
+    
+        # --- NOVOS INDICADORES ADICIONADOS AQUI ---
+        st.markdown("##### Taxa Básica e Juro Real")
+        col1, col2 = st.columns(2)
+        with col1:
+            # Fed Funds Rate - FRED: FEDFUNDS
+            plot_indicator_with_analysis(
+                'fred', "FEDFUNDS",
+                "Fed Funds Rate (Taxa Básica)",
+                "A principal taxa de juros de política monetária, definida pelo Fed. É a âncora para o custo do dinheiro na economia.",
+                unit="%"
+            )
+        with col2:
+            # 10-Year TIPS - FRED: DFII10
+            plot_indicator_with_analysis(
+                'fred', "DFII10",
+                "Juro Real de 10 Anos (TIPS)",
+                "Rendimento dos títulos de 10 anos protegidos da inflação (TIPS). Mostra o retorno real esperado pelos investidores.",
+                unit="%",
+                hline=0
+            )
+        st.divider()
+    
+        # --- SEÇÕES EXISTENTES MANTIDAS ABAIXO ---
         st.markdown("##### Forma da Curva de Juros Atual")
-        yield_curve_df = get_us_yield_curve_data() # Agora esta função existe
+        yield_curve_df = get_us_yield_curve_data()
         if not yield_curve_df.empty:
             fig_curve = px.line(yield_curve_df, x='Prazo', y='Taxa (%)', title="Curva de Juros do Tesouro Americano", markers=True)
-            st.plotly_chart(fig_curve, use_container_width=True)
+            st.plotly_chart(fig_curve, use_container_width=True, key="us_yield_curve")
         else:
             st.warning("Não foi possível carregar os dados para a forma da curva de juros.")
         st.divider()
+    
         st.markdown("##### Spreads da Curva de Juros (Indicadores de Recessão)")
-        c1, c2 = st.columns(2)
-        with c1:
-            j10a = fetch_fred_series("DGS10", start_date); j2a = fetch_fred_series("DGS2", start_date)
+        col3, col4 = st.columns(2)
+        with col3:
+            j10a = fetch_fred_series("DGS10", start_date)
+            j2a = fetch_fred_series("DGS2", start_date)
             if not j10a.empty and not j2a.empty:
                 spread = (j10a - j2a).dropna()
-                fig = px.area(spread, title="Spread 10 Anos - 2 Anos"); fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
-        with c2:
-            j2a_s = fetch_fred_series("DGS2", start_date); j3m = fetch_fred_series("DGS3MO", start_date)
+                fig = px.area(spread, title="Spread 10 Anos - 2 Anos")
+                fig.add_hline(y=0, line_dash="dash", line_color="red")
+                st.plotly_chart(fig, use_container_width=True, key="spread_10y_2y")
+        with col4:
+            j2a_s = fetch_fred_series("DGS2", start_date)
+            j3m = fetch_fred_series("DGS3MO", start_date)
             if not j2a_s.empty and not j3m.empty:
                 spread = (j2a_s - j3m).dropna()
-                fig = px.area(spread, title="Spread 2 Anos - 3 Meses"); fig.add_hline(y=0, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
+                fig = px.area(spread, title="Spread 2 Anos - 3 Meses")
+                fig.add_hline(y=0, line_dash="dash", line_color="red")
+                st.plotly_chart(fig, use_container_width=True, key="spread_2y_3m")
 
     with subtab_us_fed:
         # Esta seção também precisa usar a nova função de plotagem para padronização
