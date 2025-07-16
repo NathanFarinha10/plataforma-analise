@@ -425,16 +425,61 @@ with tab_us:
     
     subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_real_estate, subtab_us_yield, subtab_us_fed = st.tabs(["Atividade e Consumo", "Mercado de Trabalho", "Inflação", "Imobiliário", "Curva de Juros", "Visão do Fed"])
     
-    with subtab_us_activity:
-        st.subheader("Indicadores de Atividade, Produção e Consumo")
+    with subtab_br_activity:
+        st.subheader("Indicadores de Atividade Econômica e Confiança")
+        st.caption("Acompanhe os principais setores que movem o PIB brasileiro, do sentimento do consumidor aos dados consolidados.")
         st.divider()
-        plot_indicator_with_analysis('fred', "INDPRO", "Produção Industrial", "Mede a produção total das fábricas, minas e serviços de utilidade pública. Um forte indicador da saúde do setor secundário da economia.", "Var. Anual %", is_pct_change=True)
+
+        # 1. Confiança do Consumidor
+        # Código SGS BCB: 4393
+        plot_indicator_with_analysis(
+            'bcb', {'ICC': 4393},
+            "Confiança do Consumidor (FGV)",
+            "Mede o otimismo dos consumidores em relação à economia. Níveis acima de 100 indicam otimismo. É um indicador antecedente do consumo.",
+            "Índice", hline=100
+        )
         st.divider()
-        plot_indicator_with_analysis('fred', "RSXFS", "Vendas no Varejo (Ex-Alimentação)", "Mede o total de vendas de bens no varejo. É um indicador chave da força do consumo das famílias.", "Var. Anual %", is_pct_change=True)
+
+        # 2. Volume de Serviços
+        # Código SGS BCB: 21864 (variação anual)
+        plot_indicator_with_analysis(
+            'bcb', {'PMS': 21864},
+            "Volume de Serviços (PMS)",
+            "Mede a evolução do volume de receita do setor de serviços, o maior componente do PIB brasileiro.",
+            "Var. Anual %", is_pct_change=False # O dado já vem como variação
+        )
         st.divider()
-        plot_indicator_with_analysis('fred', "PCEC96", "Consumo Pessoal (PCE Real)", "Mede os gastos totais dos consumidores, ajustado pela inflação. É o principal componente do PIB.", "Var. Anual %", is_pct_change=True)
+
+        # 3. Produção Industrial
+        # Código SGS BCB: 21859 (variação anual)
+        plot_indicator_with_analysis(
+            'bcb', {'PIM': 21859},
+            "Produção Industrial (PIM-PF)",
+            "Mede a produção física da indústria de transformação e extrativa. Um termômetro da saúde do setor secundário.",
+            "Var. Anual %", is_pct_change=False # O dado já vem como variação
+        )
         st.divider()
-        plot_indicator_with_analysis('fred', "UMCSENT", "Sentimento do Consumidor (Univ. Michigan)", "Mede a confiança dos consumidores. Um sentimento alto geralmente precede maiores gastos.", "Índice")
+
+        # 4. Vendas no Varejo
+        # CORREÇÃO APLICADA AQUI: Trocamos a série 7388 pela 7383 e ativamos o cálculo de variação anual.
+        # Código SGS BCB: 7383 (índice base)
+        plot_indicator_with_analysis(
+            'bcb', {'PMC': 7383},
+            "Vendas no Varejo Ampliado (PMC)",
+            "Mede o volume de vendas do comércio, incluindo veículos e material de construção. Principal termômetro do consumo das famílias.",
+            "Var. Anual %",
+            is_pct_change=True # Agora nossa função calcula a variação
+        )
+        st.divider()
+
+        # 5. IBC-Br
+        # Código SGS BCB: 24369
+        plot_indicator_with_analysis(
+            'bcb', {'IBC-Br': 24369},
+            "IBC-Br (Prévia do PIB)",
+            "Índice de Atividade Econômica do BCB, considerado uma 'prévia' mensal do Produto Interno Bruto (PIB).",
+            "Índice"
+        )
 
     with subtab_us_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Americano")
