@@ -271,9 +271,9 @@ with tab_br:
         st.divider()
 
         # 4. Vendas no Varejo
-        # Código SGS BCB: 7388 (varejo ampliado, variação anual)
+        # Código SGS BCB: 7383 (varejo ampliado, variação anual)
         plot_indicator_with_analysis(
-            'bcb', {'PMC': 7388},
+            'bcb', {'PMC': 7383},
             "Vendas no Varejo Ampliado (PMC)",
             "Mede o volume de vendas do comércio, incluindo veículos e material de construção. Principal termômetro do consumo das famílias.",
             "Var. Anual %", is_pct_change=False # O dado já vem como variação
