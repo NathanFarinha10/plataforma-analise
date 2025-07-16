@@ -18,6 +18,8 @@ st.set_page_config(page_title="PAG | Análise Macro", page_icon="🌍", layout="
 # --- NOME DOS ARQUIVOS DE DADOS ---
 RECOMMENDATIONS_FILE = "recommendations.csv"
 MANAGER_VIEWS_FILE = "manager_views.json"
+FOMC_MEETINGS_FILE = "fomc_meetings.json"
+REPORTS_DIR = "reports"
 REPORTS_DIR_FOMC = "reports_fomc"
 
 # --- Verifica se o usuário está logado ---
