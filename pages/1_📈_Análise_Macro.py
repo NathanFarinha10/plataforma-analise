@@ -93,12 +93,11 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
     if source == 'fred':
         data_series = fetch_fred_series(code, start_date)
     elif source == 'bcb':
-        # Para o BCB, o código pode ser um dicionário
         if isinstance(code, dict):
              df = fetch_bcb_series(code, start_date)
              if not df.empty:
-                 data_series = df.iloc[:, 0] # Pega a primeira coluna do dataframe
-        else: # Ou uma string/código único
+                 data_series = df.iloc[:, 0]
+        else:
              df = fetch_bcb_series({title: code}, start_date)
              if not df.empty:
                  data_series = df.iloc[:, 0]
@@ -107,12 +106,12 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
         st.warning(f"Não foi possível carregar os dados para {title} ({code}).")
         return
 
-    # 2. Processar os dados (cálculo de variação, se necessário)
+    # 2. Processar os dados
     data_to_plot = data_series.copy()
     if is_pct_change:
         data_to_plot = data_to_plot.pct_change(12).dropna() * 100
 
-    latest_value = data_to_plot.iloc[-1]
+    latest_value = data_to_plot.iloc[-1] if not data_to_plot.empty else None
     prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
     prev_year_value = data_to_plot.iloc[-13] if len(data_to_plot) > 12 else None
 
@@ -123,23 +122,26 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
         fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data", yaxis_tickformat=",.2f")
         if hline is not None:
             fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
-        st.plotly_chart(fig, use_container_width=True)
+        
+        # CORREÇÃO: Adicionada uma chave 'key' única para evitar o erro de ID duplicado.
+        st.plotly_chart(fig, use_container_width=True, key=f"chart_{title}")
+
     with col2:
         st.markdown(f"**Análise do Indicador**")
         st.caption(explanation)
-        st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
+        if latest_value is not None:
+            st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
 
         is_rate = (unit == "%")
         delta_unit = " p.p." if is_rate else "%"
 
-        if prev_month_value is not None:
-            change_mom = latest_value - prev_month_value if is_rate else ((latest_value / prev_month_value) - 1) * 100
+        if prev_month_value is not None and latest_value is not None:
+            change_mom = latest_value - prev_month_value if is_rate else ((latest_value / prev_month_value) - 1) * 100 if prev_month_value != 0 else 0
             st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{delta_unit}", delta=f"{change_mom:,.2f}")
 
-        if prev_year_value is not None:
-            change_yoy = latest_value - prev_year_value if is_rate else ((latest_value / prev_year_value) - 1) * 100
+        if prev_year_value is not None and latest_value is not None:
+            change_yoy = latest_value - prev_year_value if is_rate else ((latest_value / prev_year_value) - 1) * 100 if prev_year_value != 0 else 0
             st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{delta_unit}", delta=f"{change_yoy:,.2f}")
-
 # --- ADICIONE ESTAS FUNÇÕES FALTANTES NA SEÇÃO DE FUNÇÕES AUXILIARES ---
 
 @st.cache_data(ttl=3600)
