@@ -300,22 +300,6 @@ with tab_us:
         with col_pce2:
             plot_indicator_with_analysis("PCEPILFE", "Core PCE (Núcleo)", "O indicador mais importante para a política monetária. A meta do Fed é de 2% para este núcleo.", is_pct_change=True, unit="Var. Anual %")
         
-        # --- NOVA ANÁLISE DE CONTRIBUIÇÃO ---
-        st.markdown("###### Contribuição para a Inflação (Core PCE)")
-        contrib_codes = {
-            "Contribuição de Bens": "DPCGRG3M086SBEA",
-            "Contribuição de Serviços": "DPCSRG3M086SBEA"
-        }
-        contrib_df = pd.DataFrame()
-        for name, code in contrib_codes.items():
-            contrib_df[name] = fetch_fred_series(code, start_date)
-        
-        if not contrib_df.empty:
-            fig_contrib = px.bar(contrib_df.dropna(), title="Decomposição da Contribuição para o Core PCE (Anualizada)")
-            fig_contrib.update_layout(yaxis_title="Contribuição em Pontos Percentuais (p.p.)", xaxis_title="Data", barmode='stack', legend_title="Componente")
-            st.plotly_chart(fig_contrib, use_container_width=True)
-            st.caption("Este gráfico mostra o quanto, em pontos percentuais, a inflação de Bens e a de Serviços contribuíram para o número final do Core PCE.")
-
         st.divider()
 
         # --- PPI & Expectativas ---
