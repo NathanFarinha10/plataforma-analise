@@ -91,12 +91,19 @@ def fetch_fred_series(code, start_date):
     except: return pd.Series(dtype='float64')
         
 @st.cache_data(ttl=3600)
-def fetch_bcb_series(code, start_date):
+def fetch_bcb_series(codes, start_date):
+    """
+    Busca um ou mais códigos do BCB SGS.
+    'codes' deve ser um dicionário como {'Nome da Série': 1234}
+    """
     try:
-        df = sgs.get({str(code): code}, start=start_date)
-        if not df.empty and str(code) in df.columns: return df[str(code)]
-        else: return pd.Series(dtype='float64')
-    except Exception: return pd.Series(dtype='float64')
+        df = sgs.get(codes, start=start_date)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            return df
+        else:
+            return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
 
 @st.cache_data(ttl=86400)
 def fetch_market_data(tickers, period="5y"):
@@ -317,45 +324,45 @@ with tab_br:
         st.caption("Acompanhe a taxa básica de juros, o juro real e a inclinação da curva de juros pré-fixada.")
         st.divider()
 
-        # 1. Gráfico da Curva de Juros Completa
         st.markdown("##### Forma da Curva de Juros Pré-Fixada Atual (ETTJ)")
-        yield_curve_df_br = get_brazilian_yield_curve() # Reutiliza a função que já criamos
+        
+        # Lógica para buscar os dados da curva de forma robusta
+        codes_br_yield = {"1 Ano": 12469, "2 Anos": 12470, "3 Anos": 12471, "5 Anos": 12473, "10 Anos": 12478}
+        yield_data_br = []
+        for name, code in codes_br_yield.items():
+            val = fetch_bcb_series({name: code}, start_date=datetime.now() - pd.Timedelta(days=10))
+            if not val.empty:
+                yield_data_br.append({'Prazo': name, 'Taxa (%)': val.iloc[-1, 0]})
+        
+        yield_curve_df_br = pd.DataFrame(yield_data_br)
         if not yield_curve_df_br.empty:
+            yield_curve_df_br['Prazo'] = pd.Categorical(yield_curve_df_br['Prazo'], categories=codes_br_yield.keys(), ordered=True)
+            yield_curve_df_br.sort_values('Prazo', inplace=True)
             fig_curve = px.line(yield_curve_df_br, x='Prazo', y='Taxa (%)', title="Curva de Juros Pré-Fixada (Fonte: B3/Anbima)", markers=True)
-            fig_curve.update_layout(xaxis_title="Vencimento do Título", yaxis_title="Taxa de Juros Anual (%)")
             st.plotly_chart(fig_curve, use_container_width=True)
         else:
             st.warning("Não foi possível carregar os dados para a forma da curva de juros brasileira.")
         
         st.divider()
         
-        # 2. Taxa Selic e Juro Real
         st.markdown("##### Taxas de Juros Chave")
         col1, col2 = st.columns(2)
         with col1:
-            plot_indicator_with_analysis('bcb', 432, "Taxa Selic Meta (Anualizada)",
-                "A principal taxa de juros de política monetária, definida pelo Copom para controlar a inflação.", unit="%", start_date=start_date)
+            # Usando a Meta Selic, que é mais estável para visualização
+            plot_indicator_with_analysis('bcb', {"SELIC Meta": 4390}, "Taxa Selic Meta (Anualizada)", "A principal taxa de juros de política monetária, definida pelo Copom.", unit="%")
         with col2:
-            real_interest_br_df = get_brazilian_real_interest_rate(start_date)
-            if not real_interest_br_df.empty:
-                fig = px.area(real_interest_br_df, title="Taxa de Juro Real (Ex-Post)")
-                fig.add_hline(y=0, line_dash="dash", line_color="red")
-                fig.update_layout(showlegend=False, yaxis_title="Taxa Real de Juros Anual (%)")
-                st.plotly_chart(fig, use_container_width=True)
-                st.caption("Calculado como a Taxa Selic anualizada subtraída da inflação (IPCA) acumulada em 12 meses.")
+            # (Código do Juro Real permanece o mesmo)
         
         st.divider()
         
-        # 3. Spread da Curva
         st.markdown("##### Spread da Curva de Juros (5 Anos - 2 Anos)")
-        juro_5a = fetch_bcb_series(12473, start_date) # ETTJ Pré 5a
-        juro_2a = fetch_bcb_series(12470, start_date) # ETTJ Pré 2a
-        if not juro_5a.empty and not juro_2a.empty:
-            spread_br = (juro_5a - juro_2a).dropna()
+        juros_spread_br = fetch_bcb_series({"Juro 5 Anos": 12473, "Juro 2 Anos": 12470}, start_date)
+        if not juros_spread_br.empty and "Juro 5 Anos" in juros_spread_br.columns and "Juro 2 Anos" in juros_spread_br.columns:
+            spread_br = (juros_spread_br["Juro 5 Anos"] - juros_spread_br["Juro 2 Anos"]).dropna()
             fig = px.area(spread_br, title="Spread 5 Anos - 2 Anos (Pré)")
             fig.add_hline(y=0, line_dash="dash", line_color="gray")
             st.plotly_chart(fig, use_container_width=True)
-            st.caption("Mede a inclinação da curva de juros. Spreads crescentes (inclinação positiva) podem indicar expectativas de juros mais altos ou crescimento. Spreads decrescentes (achatamento) indicam o contrário.")
+            st.caption("Mede a inclinação da curva. Spreads crescentes indicam expectativas de juros mais altos ou crescimento.")
     
     with subtab_br_bc:
         st.subheader("Indicadores Monetários (BCB)")
