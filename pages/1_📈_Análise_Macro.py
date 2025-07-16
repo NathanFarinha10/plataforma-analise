@@ -214,40 +214,43 @@ tab_br, tab_us, tab_global = st.tabs(["🇧🇷 Brasil", "🇺🇸 Estados Unido
 # --- ABA BRASIL ---
 with tab_br:
     st.header("Principais Indicadores do Brasil")
-    subtab_br_activity, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade", "Inflação e Juros", "Visão do BCB"])
+    subtab_br_activity, subtab_br_jobs, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade", "Mercado de Trabalho", "Inflação e Juros", "Visão do BCB"])
     
     with subtab_br_activity:
         st.subheader("Indicadores de Atividade Econômica e Confiança")
         st.divider()
+        plot_indicator_with_analysis('bcb', 24369, "IBC-Br (Prévia do PIB)", "Índice de Atividade Econômica do Banco Central, considerado uma 'prévia' mensal do PIB.", "Índice", start_date=start_date)
+        st.divider()
+        plot_indicator_with_analysis('bcb', 21859, "Produção Industrial (PIM-PF)", "Mede a produção física da indústria. Um termômetro da saúde do setor secundário.", "Var. Anual %", is_pct_change=True, start_date=start_date)
+        st.divider()
+        plot_indicator_with_analysis('bcb', 1473, "Vendas no Varejo (PMC - Volume)", "Mede o volume de vendas do comércio varejista. Principal indicador para medir a força do consumo.", "Var. Anual %", is_pct_change=True, start_date=start_date)
+        st.divider()
+        plot_indicator_with_analysis('bcb', 24424, "Volume de Serviços (PMS)", "Mede a receita bruta real do setor de serviços, o maior componente do PIB.", "Var. Anual %", is_pct_change=True, start_date=start_date)
+        st.divider()
+        plot_indicator_with_analysis('bcb', 4393.3, "Índice de Confiança do Consumidor (ICC - FGV)", "Mede o otimismo dos consumidores. É um indicador antecedente do consumo futuro.", "Índice", start_date=start_date)
+
+    # --- NOVA SUB-ABA: MERCADO DE TRABALHO BRASILEIRO ---
+    with subtab_br_jobs:
+        st.subheader("Indicadores do Mercado de Trabalho Brasileiro")
+        st.caption("A dinâmica de emprego e renda é crucial para a análise de consumo e da política monetária.")
+        st.divider()
 
         plot_indicator_with_analysis(
-            source='bcb', code=24369, title="IBC-Br (Prévia do PIB)",
-            explanation="Índice de Atividade Econômica do Banco Central, considerado uma 'prévia' mensal do PIB. Mede o ritmo da economia como um todo.",
-            unit="Índice"
+            source='bcb', code=24369, title="Taxa de Desemprego (PNADC)",
+            explanation="Mede a porcentagem da força de trabalho que está desocupada. É o principal termômetro da saúde do mercado de trabalho no Brasil.",
+            unit="%"
         )
         st.divider()
         plot_indicator_with_analysis(
-            source='bcb', code=21859, title="Produção Industrial (PIM-PF)",
-            explanation="Mede a produção física da indústria de transformação e extrativa. Um termômetro da saúde do setor secundário.",
-            unit="Var. Anual %", is_pct_change=True
+            source='bcb', code=28795, title="Renda Média Real (Trabalhador com Carteira)",
+            explanation="Mede a variação anual do rendimento médio real (descontada a inflação) do trabalhador com carteira assinada no setor privado.",
+            unit="Var. Anual %"
         )
         st.divider()
         plot_indicator_with_analysis(
-            source='bcb', code=1473, title="Vendas no Varejo (PMC - Volume)",
-            explanation="Mede o volume de vendas do comércio varejista. Principal indicador para medir a força do consumo das famílias.",
-            unit="Var. Anual %", is_pct_change=True
-        )
-        st.divider()
-        plot_indicator_with_analysis(
-            source='bcb', code=24424, title="Volume de Serviços (PMS)",
-            explanation="Mede a receita bruta real do setor de serviços, que é o maior componente do PIB brasileiro. Essencial para entender a dinâmica da economia.",
-            unit="Var. Anual %", is_pct_change=True
-        )
-        st.divider()
-        plot_indicator_with_analysis(
-            source='bcb', code=4393.3, title="Índice de Confiança do Consumidor (ICC - FGV)",
-            explanation="Mede o quão otimistas os consumidores estão em relação à economia e suas finanças. É um indicador antecedente do consumo futuro.",
-            unit="Índice"
+            source='bcb', code=28793, title="Renda Média Real (Total Setor Privado)",
+            explanation="Mede a variação anual do rendimento médio real de todos os trabalhadores do setor privado, incluindo informais.",
+            unit="Var. Anual %"
         )
     
     with subtab_br_inflation:
