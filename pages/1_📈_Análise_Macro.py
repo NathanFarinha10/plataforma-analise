@@ -216,7 +216,7 @@ with tab_br:
     st.header("Principais Indicadores do Brasil")
     subtab_br_activity, subtab_br_inflation, subtab_br_bc = st.tabs(["Atividade", "Inflação e Juros", "Visão do BCB"])
     
-   with subtab_br_activity:
+    with subtab_br_activity:
         st.subheader("Indicadores de Atividade Econômica e Confiança")
         st.divider()
 
