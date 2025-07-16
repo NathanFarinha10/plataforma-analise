@@ -87,36 +87,32 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
     - code: O código do indicador na API.
     - is_pct_change: Se True, calcula a variação anual (YoY).
     """
-    if isinstance(code, dict):
-        unique_key_id = list(code.values())[0]
-    else:
-        unique_key_id = code
-    
-    data_series = pd.Series(dtype='float64')
+    data_series = pd.Series(dtype='float64') # Inicializa uma série vazia
 
-    # 1. Buscar os dados
+    # 1. Buscar os dados da fonte correta
     if source == 'fred':
         data_series = fetch_fred_series(code, start_date)
     elif source == 'bcb':
+        # Para o BCB, o código pode ser um dicionário
         if isinstance(code, dict):
              df = fetch_bcb_series(code, start_date)
              if not df.empty:
-                 data_series = df.iloc[:, 0]
-        else:
+                 data_series = df.iloc[:, 0] # Pega a primeira coluna do dataframe
+        else: # Ou uma string/código único
              df = fetch_bcb_series({title: code}, start_date)
              if not df.empty:
                  data_series = df.iloc[:, 0]
 
     if data_series is None or data_series.empty:
-        st.warning(f"Não foi possível carregar os dados para {title} ({unique_key_id}).")
+        st.warning(f"Não foi possível carregar os dados para {title} ({code}).")
         return
 
-    # 2. Processar os dados
+    # 2. Processar os dados (cálculo de variação, se necessário)
     data_to_plot = data_series.copy()
     if is_pct_change:
         data_to_plot = data_to_plot.pct_change(12).dropna() * 100
 
-    latest_value = data_to_plot.iloc[-1] if not data_to_plot.empty else None
+    latest_value = data_to_plot.iloc[-1]
     prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
     prev_year_value = data_to_plot.iloc[-13] if len(data_to_plot) > 12 else None
 
@@ -127,37 +123,23 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
         fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data", yaxis_tickformat=",.2f")
         if hline is not None:
             fig.add_hline(y=hline, line_dash="dash", line_color="red", annotation_text=f"Nível {hline}")
-        st.plotly_chart(fig, use_container_width=True, key=f"chart_{unique_key_id}")
-
+        st.plotly_chart(fig, use_container_width=True)
     with col2:
         st.markdown(f"**Análise do Indicador**")
         st.caption(explanation)
-
-        # CORREÇÃO: Adicionado tratamento de erro (try-except) antes de formatar os valores
-        if latest_value is not None:
-            try:
-                value_str = f"{float(latest_value):,.2f}"
-            except (ValueError, TypeError):
-                value_str = str(latest_value)
-            st.metric(label=f"Último Valor ({unit})", value=value_str, key=f"metric_last_{unique_key_id}")
+        st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
 
         is_rate = (unit == "%")
         delta_unit = " p.p." if is_rate else "%"
 
-        if prev_month_value is not None and latest_value is not None:
-            try:
-                change_mom = float(latest_value) - float(prev_month_value) if is_rate else ((float(latest_value) / float(prev_month_value)) - 1) * 100 if float(prev_month_value) != 0 else 0
-                st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{delta_unit}", delta=f"{change_mom:,.2f}", key=f"metric_mom_{unique_key_id}")
-            except (ValueError, TypeError):
-                st.info("Não foi possível calcular a variação mensal.")
+        if prev_month_value is not None:
+            change_mom = latest_value - prev_month_value if is_rate else ((latest_value / prev_month_value) - 1) * 100
+            st.metric(label=f"Variação Mensal", value=f"{change_mom:,.2f}{delta_unit}", delta=f"{change_mom:,.2f}")
 
+        if prev_year_value is not None:
+            change_yoy = latest_value - prev_year_value if is_rate else ((latest_value / prev_year_value) - 1) * 100
+            st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{delta_unit}", delta=f"{change_yoy:,.2f}")
 
-        if prev_year_value is not None and latest_value is not None:
-            try:
-                change_yoy = float(latest_value) - float(prev_year_value) if is_rate else ((float(latest_value) / float(prev_year_value)) - 1) * 100 if float(prev_year_value) != 0 else 0
-                st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{delta_unit}", delta=f"{change_yoy:,.2f}", key=f"metric_yoy_{unique_key_id}")
-            except (ValueError, TypeError):
-                st.info("Não foi possível calcular a variação anual.")
 # --- ADICIONE ESTAS FUNÇÕES FALTANTES NA SEÇÃO DE FUNÇÕES AUXILIARES ---
 
 @st.cache_data(ttl=3600)
@@ -289,9 +271,9 @@ with tab_br:
         st.divider()
 
         # 4. Vendas no Varejo
-        # Código SGS BCB: 7383 (varejo ampliado, variação anual)
+        # Código SGS BCB: 7388 (varejo ampliado, variação anual)
         plot_indicator_with_analysis(
-            'bcb', {'PMC': 7383},
+            'bcb', {'PMC': 7388},
             "Vendas no Varejo Ampliado (PMC)",
             "Mede o volume de vendas do comércio, incluindo veículos e material de construção. Principal termômetro do consumo das famílias.",
             "Var. Anual %", is_pct_change=False # O dado já vem como variação
@@ -443,61 +425,16 @@ with tab_us:
     
     subtab_us_activity, subtab_us_jobs, subtab_us_inflation, subtab_us_real_estate, subtab_us_yield, subtab_us_fed = st.tabs(["Atividade e Consumo", "Mercado de Trabalho", "Inflação", "Imobiliário", "Curva de Juros", "Visão do Fed"])
     
-    with subtab_br_activity:
-        st.subheader("Indicadores de Atividade Econômica e Confiança")
-        st.caption("Acompanhe os principais setores que movem o PIB brasileiro, do sentimento do consumidor aos dados consolidados.")
+    with subtab_us_activity:
+        st.subheader("Indicadores de Atividade, Produção e Consumo")
         st.divider()
-
-        # 1. Confiança do Consumidor
-        # Código SGS BCB: 4393
-        plot_indicator_with_analysis(
-            'bcb', {'ICC': 4393},
-            "Confiança do Consumidor (FGV)",
-            "Mede o otimismo dos consumidores em relação à economia. Níveis acima de 100 indicam otimismo. É um indicador antecedente do consumo.",
-            "Índice", hline=100
-        )
+        plot_indicator_with_analysis('fred', "INDPRO", "Produção Industrial", "Mede a produção total das fábricas, minas e serviços de utilidade pública. Um forte indicador da saúde do setor secundário da economia.", "Var. Anual %", is_pct_change=True)
         st.divider()
-
-        # 2. Volume de Serviços
-        # Código SGS BCB: 21864 (variação anual)
-        plot_indicator_with_analysis(
-            'bcb', {'PMS': 21864},
-            "Volume de Serviços (PMS)",
-            "Mede a evolução do volume de receita do setor de serviços, o maior componente do PIB brasileiro.",
-            "Var. Anual %", is_pct_change=False # O dado já vem como variação
-        )
+        plot_indicator_with_analysis('fred', "RSXFS", "Vendas no Varejo (Ex-Alimentação)", "Mede o total de vendas de bens no varejo. É um indicador chave da força do consumo das famílias.", "Var. Anual %", is_pct_change=True)
         st.divider()
-
-        # 3. Produção Industrial
-        # Código SGS BCB: 21859 (variação anual)
-        plot_indicator_with_analysis(
-            'bcb', {'PIM': 21859},
-            "Produção Industrial (PIM-PF)",
-            "Mede a produção física da indústria de transformação e extrativa. Um termômetro da saúde do setor secundário.",
-            "Var. Anual %", is_pct_change=False # O dado já vem como variação
-        )
+        plot_indicator_with_analysis('fred', "PCEC96", "Consumo Pessoal (PCE Real)", "Mede os gastos totais dos consumidores, ajustado pela inflação. É o principal componente do PIB.", "Var. Anual %", is_pct_change=True)
         st.divider()
-
-        # 4. Vendas no Varejo
-        # CORREÇÃO APLICADA AQUI: Trocamos a série 7388 pela 7383 e ativamos o cálculo de variação anual.
-        # Código SGS BCB: 7383 (índice base)
-        plot_indicator_with_analysis(
-            'bcb', {'PMC': 7383},
-            "Vendas no Varejo Ampliado (PMC)",
-            "Mede o volume de vendas do comércio, incluindo veículos e material de construção. Principal termômetro do consumo das famílias.",
-            "Var. Anual %",
-            is_pct_change=True # Agora nossa função calcula a variação
-        )
-        st.divider()
-
-        # 5. IBC-Br
-        # Código SGS BCB: 24369
-        plot_indicator_with_analysis(
-            'bcb', {'IBC-Br': 24369},
-            "IBC-Br (Prévia do PIB)",
-            "Índice de Atividade Econômica do BCB, considerado uma 'prévia' mensal do Produto Interno Bruto (PIB).",
-            "Índice"
-        )
+        plot_indicator_with_analysis('fred', "UMCSENT", "Sentimento do Consumidor (Univ. Michigan)", "Mede a confiança dos consumidores. Um sentimento alto geralmente precede maiores gastos.", "Índice")
 
     with subtab_us_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Americano")
