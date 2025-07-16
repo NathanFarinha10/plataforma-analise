@@ -973,16 +973,30 @@ with tab_global:
                 st.plotly_chart(px.line(rolling_vol, title="Volatilidade Anualizada Móvel (60d)"), use_container_width=True)
                 st.divider()
     
-        # --- SEÇÃO 4: ANÁLISE DE VALUATION (CORRIGIDA) ---
-        st.markdown("##### Análise de Valuation (Shiller P/E Ratio)")
-        # CORREÇÃO: Trocado o P/L tradicional pelo Shiller P/E (CAPE), mais robusto.
-        # FRED: SHILLER_PE_RATIO_MONTH
-        plot_indicator_with_analysis(
-            'fred', "SHILLER_PE_RATIO_MONTH",
-            "Shiller P/E Ratio (CAPE)",
-            "Mede o preço do S&P 500 dividido pela média dos lucros dos últimos 10 anos, ajustados pela inflação. É uma medida de valuation de longo prazo.",
-            unit="Ratio"
-        )
+        # --- SEÇÃO 4: ANÁLISE DE VALUATION (BUFFETT INDICATOR) ---
+        st.markdown("##### Análise de Valuation (Buffett Indicator: Market Cap / GDP)")
+        st.caption("Compara a capitalização total do mercado de ações (Wilshire 5000) com o PIB dos EUA. Uma métrica de valuation de alto nível.")
+    
+        # Buscar as duas séries necessárias
+        market_cap = fetch_fred_series("WILL5000INDFC", start_date)
+        gdp = fetch_fred_series("GDP", start_date)
+    
+        if not market_cap.empty and not gdp.empty:
+            # Alinhar as séries. GDP é trimestral, então vamos preencher para frente (forward-fill) para ter valores diários.
+            gdp = gdp.resample('D').ffill()
+            
+            # Unir as duas séries, garantindo que os índices de data correspondam
+            df_valuation = pd.concat([market_cap, gdp], axis=1).dropna()
+            df_valuation.columns = ['MarketCap', 'GDP']
+            
+            # O Market Cap está em bilhões de USD, e o PIB também. O ratio é direto.
+            df_valuation['BuffettIndicator'] = (df_valuation['MarketCap'] / df_valuation['GDP']) * 100
+            
+            fig_valuation = px.area(df_valuation['BuffettIndicator'], title="Buffett Indicator (%)")
+            fig_valuation.update_layout(showlegend=False, yaxis_title="%")
+            st.plotly_chart(fig_valuation, use_container_width=True)
+        else:
+            st.warning("Não foi possível carregar os dados para o Buffett Indicator.")
         st.divider()
     
         # --- SEÇÃO 5: ANÁLISE DE ESTILO/FATOR ---
@@ -991,7 +1005,6 @@ with tab_global:
         factor_data = fetch_market_data(list(factor_tickers.values()))
         if not factor_data.empty:
             factor_data.rename(columns={code: name for name, code in factor_tickers.items()}, inplace=True)
-            # Ratio de performance
             factor_ratio = (factor_data["Growth (Crescimento)"] / factor_data["Value (Valor)"]).dropna()
             st.plotly_chart(px.line(factor_ratio, title="Ratio de Performance: Growth vs. Value"), use_container_width=True)
             st.caption("Um ratio crescente indica que ações de 'Growth' estão performando melhor que ações de 'Value'.")
