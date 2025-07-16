@@ -120,37 +120,55 @@ with tab_br:
     with subtab_br_activity:
         st.subheader("Indicadores de Atividade Econômica e Confiança")
         st.divider()
-        data = fetch_bcb_series({'data': 24369}, start_date); plot_indicator_with_analysis(data, "IBC-Br (Prévia do PIB)", "Índice de Atividade Econômica do BCB.", "Índice")
+        # --- CORREÇÃO APLICADA: Passando a coluna correta para a função ---
+        data = fetch_bcb_series({'IBC-Br': 24369}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['IBC-Br'], "IBC-Br (Prévia do PIB)", "Índice de Atividade Econômica do Banco Central.", "Índice")
         st.divider()
-        data = fetch_bcb_series({'data': 21859}, start_date).pct_change(12).dropna()*100; plot_indicator_with_analysis(data, "Produção Industrial", "Mede a produção física da indústria.", "Var. Anual %")
+        data = fetch_bcb_series({'PIM': 21859}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['PIM'].pct_change(12).dropna()*100, "Produção Industrial", "Mede a produção física da indústria.", "Var. Anual %")
         st.divider()
-        data = fetch_bcb_series({'data': 1473}, start_date).pct_change(12).dropna()*100; plot_indicator_with_analysis(data, "Vendas no Varejo", "Mede o volume de vendas do comércio.", "Var. Anual %")
+        data = fetch_bcb_series({'PMC': 1473}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['PMC'].pct_change(12).dropna()*100, "Vendas no Varejo", "Mede o volume de vendas do comércio.", "Var. Anual %")
         st.divider()
-        data = fetch_bcb_series({'data': 24424}, start_date).pct_change(12).dropna()*100; plot_indicator_with_analysis(data, "Volume de Serviços", "Mede a receita real do setor de serviços.", "Var. Anual %")
+        data = fetch_bcb_series({'PMS': 24424}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['PMS'].pct_change(12).dropna()*100, "Volume de Serviços", "Mede a receita real do setor de serviços.", "Var. Anual %")
         st.divider()
-        data = fetch_bcb_series({'data': 4393}, start_date); plot_indicator_with_analysis(data, "Índice de Confiança do Consumidor", "Mede o otimismo dos consumidores.", "Índice")
+        data = fetch_bcb_series({'ICC': 4393}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['ICC'], "Índice de Confiança do Consumidor", "Mede o otimismo dos consumidores.", "Índice")
 
     with subtab_br_jobs:
         st.subheader("Indicadores do Mercado de Trabalho Brasileiro")
         st.divider()
-        data = fetch_bcb_series({'data': 24369}, start_date); plot_indicator_with_analysis(data, "Taxa de Desemprego (PNADC)", "Porcentagem da força de trabalho desocupada.", "%")
+        data = fetch_bcb_series({'Desemprego': 24369}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['Desemprego'], "Taxa de Desemprego (PNADC)", "Porcentagem da força de trabalho desocupada.", "%")
         st.divider()
-        data = fetch_bcb_series({'data': 28795}, start_date); plot_indicator_with_analysis(data, "Renda Média Real (Trabalhador com Carteira)", "Variação anual do rendimento médio real do trabalhador com carteira assinada.", "Var. Anual %")
+        data = fetch_bcb_series({'Renda': 28795}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['Renda'], "Renda Média Real (Trabalhador com Carteira)", "Variação anual do rendimento médio real do trabalhador com carteira assinada.", "Var. Anual %")
         st.divider()
-        data = fetch_bcb_series({'data': 28793}, start_date); plot_indicator_with_analysis(data, "Renda Média Real (Total Setor Privado)", "Variação anual do rendimento médio real de todos os trabalhadores do setor privado.", "Var. Anual %")
+        data = fetch_bcb_series({'Renda Total': 28793}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['Renda Total'], "Renda Média Real (Total Setor Privado)", "Variação anual do rendimento médio real de todos os trabalhadores do setor privado.", "Var. Anual %")
 
     with subtab_br_inflation:
         st.subheader("Indicadores de Inflação e Preços")
         st.divider()
         c1, c2 = st.columns(2)
-        with c1: data = fetch_bcb_series({'data': 433}, start_date); plot_indicator_with_analysis(data, "IPCA (Variação Mensal)", "Mede a inflação oficial do país sob a ótica do consumidor.", unit="%")
-        with c2: data = fetch_bcb_series({'data': 11427}, start_date); plot_indicator_with_analysis(data, "Média dos Núcleos de Inflação", "Mede a tendência de fundo da inflação, excluindo voláteis.", unit="%")
+        with c1: 
+            data = fetch_bcb_series({'IPCA': 433}, start_date)
+            if not data.empty: plot_indicator_with_analysis(data['IPCA'], "IPCA (Variação Mensal)", "Mede a inflação oficial do país.", unit="%")
+        with c2: 
+            data = fetch_bcb_series({'Nucleo': 11427}, start_date)
+            if not data.empty: plot_indicator_with_analysis(data['Nucleo'], "Média dos Núcleos de Inflação", "Mede a tendência de fundo da inflação.", unit="%")
         st.divider()
         c3, c4 = st.columns(2)
-        with c3: data = fetch_bcb_series({'data': 4449}, start_date); plot_indicator_with_analysis(data, "IPCA - Bens Industrializados", "Inflação de produtos industriais.", unit="%")
-        with c4: data = fetch_bcb_series({'data': 4448}, start_date); plot_indicator_with_analysis(data, "IPCA - Serviços", "Inflação do setor de serviços.", unit="%")
+        with c3: 
+            data = fetch_bcb_series({'Bens': 4449}, start_date)
+            if not data.empty: plot_indicator_with_analysis(data['Bens'], "IPCA - Bens Industrializados", "Inflação de produtos industriais.", unit="%")
+        with c4: 
+            data = fetch_bcb_series({'Servicos': 4448}, start_date)
+            if not data.empty: plot_indicator_with_analysis(data['Servicos'], "IPCA - Serviços", "Inflação do setor de serviços.", unit="%")
         st.divider()
-        data = fetch_bcb_series({'data': 189}, start_date); plot_indicator_with_analysis(data, "IGP-M (Variação Mensal)", "Conhecido como a 'inflação do aluguel'.", unit="%")
+        data = fetch_bcb_series({'IGPM': 189}, start_date)
+        if not data.empty: plot_indicator_with_analysis(data['IGPM'], "IGP-M (Variação Mensal)", "A 'inflação do aluguel'.", unit="%")
 
     with subtab_br_yield:
         st.subheader("Análise da Curva de Juros Brasileira")
