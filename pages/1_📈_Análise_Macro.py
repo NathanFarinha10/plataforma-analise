@@ -991,7 +991,7 @@ with tab_global:
         # --- SEÇÃO 4: ANÁLISE DE VALUATION (SNAPSHOT VIA YFINANCE) ---
         st.markdown("##### Análise de Valuation (Snapshot S&P 500 via SPY)")
         st.caption("Exibe o valuation atual do S&P 500, utilizando o ETF SPY como proxy. Fonte: Yahoo Finance.")
-    
+        
         # Busca os dados de valuation usando a nova função
         trailing_pe, forward_pe = get_yfinance_valuation("SPY")
         
@@ -1001,6 +1001,7 @@ with tab_global:
                 label="P/L Trailing (Últimos 12M)",
                 value=f"{trailing_pe:.2f}" if isinstance(trailing_pe, (int, float)) else str(trailing_pe)
             )
+            # GARANTA QUE SEU CÓDIGO ESTEJA ASSIM (COM O TEXTO ENTRE ASPAS):
             st.help("Preço da ação dividido pelo lucro por ação dos últimos 12 meses. Mostra o quanto o mercado está pagando pelo lucro passado.")
             
         with col_val2:
@@ -1008,6 +1009,7 @@ with tab_global:
                 label="P/L Forward (Projetado 12M)",
                 value=f"{forward_pe:.2f}" if isinstance(forward_pe, (int, float)) else str(forward_pe)
             )
+            # GARANTA QUE SEU CÓDIGO ESTEJA ASSIM (COM O TEXTO ENTRE ASPAS):
             st.help("Preço da ação dividido pelo lucro projetado para os próximos 12 meses. Mostra a expectativa do mercado sobre os lucros futuros.")
         st.divider()
     
@@ -1030,12 +1032,6 @@ with tab_global:
         vix = fetch_market_data(["^VIX"])
         if not vix.empty:
             fig = px.area(vix, title="Índice de Volatilidade VIX"); fig.add_hline(y=20, line_dash="dash"); fig.add_hline(y=30, line_dash="dash", line_color="red"); st.plotly_chart(fig, use_container_width=True)
-    with subtab_valuation:
-        factor_tickers = {"Growth": "VUG", "Value": "VTV"}
-        data = fetch_market_data(list(factor_tickers.values()))
-        if not data.empty:
-            data["Ratio"] = data["VUG"] / data["VTV"]
-            st.plotly_chart(px.line(data["Ratio"], title="Ratio de Performance: Growth vs. Value"), use_container_width=True)
     with subtab_big_players:
         st.subheader("Visão Consolidada dos Grandes Players")
 
