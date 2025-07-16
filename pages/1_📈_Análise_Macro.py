@@ -152,6 +152,33 @@ def plot_indicator_with_analysis(source, code, title, explanation, unit="Índice
             unit_label = "%" if not is_rate else " p.p."
             st.metric(label=f"Variação Anual", value=f"{change_yoy:,.2f}{unit_label}", delta=f"{change_yoy:,.2f}")
 
+@st.cache_data(ttl=3600)
+def get_brazilian_yield_curve():
+    """Busca a Estrutura a Termo da Taxa de Juros (ETTJ) para títulos prefixados."""
+    codes = {"1 Ano": 12469, "2 Anos": 12470, "3 Anos": 12471, "5 Anos": 12473, "10 Anos": 12478}
+    data = []
+    for name, code in codes.items():
+        try:
+            val = sgs.get({name: code}, last=1)
+            if not val.empty: data.append({'Prazo': name, 'Taxa (%)': val.iloc[0, 0]})
+        except: continue
+    df = pd.DataFrame(data)
+    if not df.empty:
+        df['Prazo'] = pd.Categorical(df['Prazo'], categories=codes.keys(), ordered=True)
+        return df.sort_values('Prazo')
+    return df
+
+@st.cache_data(ttl=3600)
+def get_brazilian_real_interest_rate(start_date):
+    """Busca dados da Selic e IPCA para calcular o juro real ex-post."""
+    try:
+        selic = sgs.get({'selic': 432}, start=start_date) / 100
+        ipca = sgs.get({'ipca': 13522}, start=start_date) / 100
+        df = selic.resample('M').mean().join(ipca.resample('M').last()).dropna()
+        df['Juro Real (aa)'] = (((1 + df['selic']) / (1 + df['ipca'])) - 1) * 100
+        return df[['Juro Real (aa)']]
+    except Exception: return pd.DataFrame()
+
 # SUBSTITUA A SUA FUNÇÃO get_us_yield_curve_data PELA VERSÃO CORRIGIDA ABAIXO
 
 @st.cache_data(ttl=3600)
