@@ -90,41 +90,34 @@ def plot_indicator(data, title, y_label="Valor"):
     fig.update_layout(showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
 
-def plot_indicator_with_analysis(code, title, explanation, unit="", start_date="2010-01-01"):
-    """
-    Busca um indicador do FRED, plota o gráfico e exibe uma caixa de análise ao lado
-    com explicação, último valor e variações.
-    """
+def plot_indicator_with_analysis(code, title, explanation, unit="", start_date="2010-01-01", is_pct_change=False):
     data = fetch_fred_series(code, start_date).dropna()
-    
     if data.empty:
         st.warning(f"Não foi possível carregar os dados para {title}.")
         return
 
-    # Cálculos para as métricas
-    latest_value = data.iloc[-1]
-    prev_month_value = data.iloc[-2] if len(data) > 1 else None
-    prev_year_value = data.iloc[-13] if len(data) > 12 else None
+    # Se for variação percentual, aplica o cálculo
+    data_to_plot = data.pct_change(12).dropna() * 100 if is_pct_change else data
+
+    latest_value = data_to_plot.iloc[-1]
+    prev_month_value = data_to_plot.iloc[-2] if len(data_to_plot) > 1 else None
+    prev_year_value = data_to_plot.iloc[-13] if len(data_to_plot) > 12 else None
     
     change_mom = latest_value - prev_month_value if prev_month_value is not None else None
     change_yoy = latest_value - prev_year_value if prev_year_value is not None else None
 
-    # Layout em colunas
     col1, col2 = st.columns([3, 1])
-
     with col1:
-        fig = px.area(data, title=title)
+        fig = px.area(data_to_plot, title=title)
         fig.update_layout(showlegend=False, yaxis_title=unit, xaxis_title="Data")
         st.plotly_chart(fig, use_container_width=True)
-
     with col2:
         st.markdown(f"**Análise do Indicador**")
         st.caption(explanation)
         st.metric(label=f"Último Valor ({unit})", value=f"{latest_value:,.2f}")
-        if change_mom is not None:
-            st.metric(label="Variação Mensal", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
-        if change_yoy is not None:
-            st.metric(label="Variação Anual", value=f"{change_yoy:,.2f}", delta=f"{change_yoy:,.2f}")
+        if change_mom is not None: st.metric(label="Variação Mensal", value=f"{change_mom:,.2f}", delta=f"{change_mom:,.2f}")
+        if change_yoy is not None: st.metric(label="Variação Anual", value=f"{change_yoy:,.2f}", delta=f"{change_yoy:,.2f}")
+
 
 def analyze_central_bank_discourse(text, lang='pt'):
     text = text.lower(); text = re.sub(r'\d+', '', text)
@@ -182,8 +175,46 @@ with tab_us:
     subtab_us_activity, subtab_us_inflation, subtab_us_yield, subtab_us_real_estate, subtab_us_bc = st.tabs(["Atividade", "Inflação", "Curva de Juros", "Mercado Imobiliário", "Visão do Fed"])
     
     with subtab_us_activity:
-        st.subheader("Atividade Econômica")
-        plot_indicator(fetch_fred_series("GDPC1", start_date).pct_change(4).dropna() * 100, "PIB Real (Var. Anual %)")
+        st.subheader("Indicadores de Atividade, Produção e Consumo")
+        st.divider()
+
+        plot_indicator_with_analysis(
+            code="INDPRO", title="Produção Industrial",
+            explanation="Mede a produção total das fábricas, minas e serviços de utilidade pública. Um forte indicador da saúde do setor secundário da economia.",
+            unit="Var. Anual %", is_pct_change=True
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="RSXFS", title="Vendas no Varejo (Ex-Alimentação)",
+            explanation="Mede o total de vendas de bens no varejo, excluindo serviços de alimentação. É um indicador chave da força do consumo das famílias.",
+            unit="Var. Anual %", is_pct_change=True
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="PCEC96", title="Consumo Pessoal (PCE Real)",
+            explanation="Mede os gastos totais dos consumidores em bens e serviços, ajustado pela inflação. É o principal componente do PIB e reflete a demanda agregada.",
+            unit="Var. Anual %", is_pct_change=True
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="AMTMNO", title="Novas Ordens à Manufatura",
+            explanation="Mede o valor em dólares de novos pedidos feitos à indústria. É um indicador antecedente, pois sinaliza a produção futura.",
+            unit="Var. Anual %", is_pct_change=True
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="MANEMP", title="Emprego na Manufatura",
+            explanation="Mede o número de trabalhadores empregados no setor industrial. Sua tendência ajuda a avaliar a saúde do mercado de trabalho e da indústria.",
+            unit="Milhares"
+        )
+        st.divider()
+        plot_indicator_with_analysis(
+            code="UMCSENT", title="Sentimento do Consumidor (Univ. Michigan)",
+            explanation="Mede a confiança dos consumidores em relação à economia e suas finanças pessoais. Um sentimento alto geralmente precede maiores gastos.",
+            unit="Índice"
+        )
+
+    
     with subtab_us_inflation:
         st.subheader("Inflação e Juros")
         plot_indicator(fetch_fred_series("CPIAUCSL", start_date).pct_change(12).dropna() * 100, "CPI (Var. Anual %)")
